@@ -33,7 +33,7 @@ function Layout({ user, profile, children }) {
           <div className="flex items-center gap-2">
             <span className="text-lg">⚽</span>
             <h1 className="text-base font-bold text-white tracking-tight">
-              Bolão "Os Gôsa" Copa 2026
+              Bolão "Os Gôsa" - Copa 2026
             </h1>
           </div>
           <div className="flex items-center gap-2.5">
