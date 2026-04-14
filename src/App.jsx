@@ -126,7 +126,7 @@ export default function App() {
       </div>
 
       {/* Conteúdo da aba ativa */}
-      {activeTab === 'groups' && <Groups />}
+      {activeTab === 'groups' && <Groups userId={session.user.id} />}
       {activeTab === 'standings' && <Placeholder title="Classificação Geral" />}
       {activeTab === 'rules' && <Placeholder title="Regulamento do Bolão" />}
     </Layout>

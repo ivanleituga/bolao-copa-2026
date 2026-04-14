@@ -16,7 +16,7 @@ INSERT INTO teams (name, code, group_letter, flag_emoji) VALUES
 
 -- GRUPO B
 ('Canadá',                'CAN', 'B', '🇨🇦'),
-('Bósnia e Herzegovina',  'BIH', 'B', '🇧🇦'),
+('Bósnia',  'BIH', 'B', '🇧🇦'),
 ('Catar',                 'QAT', 'B', '🇶🇦'),
 ('Suíça',                 'SUI', 'B', '🇨🇭'),
 
