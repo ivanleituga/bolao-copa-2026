@@ -164,21 +164,38 @@ BEGIN
 END;
 $$;
 
--- 6. View útil: ranking geral dos participantes
+-- 6. View útil: ranking geral dos participantes (inclui pontos especiais)
 CREATE OR REPLACE VIEW ranking AS
 SELECT
   p.id AS profile_id,
   p.display_name,
-  COALESCE(SUM(pr.points), 0) AS total_points,
-  COUNT(CASE WHEN pr.points > 0 THEN 1 END) AS total_acertos,
-  COUNT(CASE WHEN pr.points = (
-    15 * get_round_multiplier(m.round)
-  ) THEN 1 END) AS cravadas,
-  COUNT(pr.id) AS total_palpites
+  COALESCE(match_pts.pts, 0) + COALESCE(special_pts.pts, 0) AS total_points,
+  COALESCE(match_pts.acertos, 0) AS total_acertos,
+  COALESCE(match_pts.cravadas, 0) AS cravadas,
+  COALESCE(match_pts.palpites, 0) AS total_palpites,
+  COALESCE(special_pts.pts, 0) AS special_points
 FROM profiles p
-LEFT JOIN predictions pr ON pr.user_id = p.id
-LEFT JOIN matches m ON m.id = pr.match_id AND m.status = 'finished'
-GROUP BY p.id, p.display_name
+LEFT JOIN (
+  SELECT
+    pr.user_id,
+    SUM(pr.points) AS pts,
+    COUNT(CASE WHEN pr.points > 0 THEN 1 END) AS acertos,
+    COUNT(CASE WHEN pr.points = 15 * get_round_multiplier(m.round) THEN 1 END) AS cravadas,
+    COUNT(pr.id) AS palpites
+  FROM predictions pr
+  JOIN matches m ON m.id = pr.match_id AND m.status = 'finished'
+  GROUP BY pr.user_id
+) match_pts ON match_pts.user_id = p.id
+LEFT JOIN (
+  SELECT
+    sp.user_id,
+    SUM(sq.points_value) AS pts
+  FROM special_predictions sp
+  JOIN special_questions sq ON sq.id = sp.question_id
+  WHERE sq.correct_answer IS NOT NULL
+    AND LOWER(TRIM(sp.answer)) = LOWER(TRIM(sq.correct_answer))
+  GROUP BY sp.user_id
+) special_pts ON special_pts.user_id = p.id
 ORDER BY total_points DESC, cravadas DESC, total_acertos DESC;
 
 -- ============================================================

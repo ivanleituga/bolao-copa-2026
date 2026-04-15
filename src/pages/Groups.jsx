@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFlagUrl } from '../lib/flags'
 import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
+import SpecialPredictions from './SpecialPredictions'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -87,8 +88,8 @@ function StatsTable({ teams }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
   return (
-    <div className="overflow-x-auto flex-1 p-2 flex items-center">
-      <table className="w-full" style={{ minWidth: 380 }}>
+    <div className="overflow-x-auto flex-1 p-2">
+      <table className="w-full h-full" style={{ minWidth: 380 }}>
         <thead>
           <tr className="border-b border-gray-700/50">
             <th
@@ -118,7 +119,7 @@ function StatsTable({ teams }) {
                   : 'border-l-2 border-l-transparent'
                 }`}
             >
-              <td className="py-5 pl-3 text-gray-400 text-sm text-center w-8">
+              <td className="py-3.5 pl-3 text-gray-400 text-sm text-center w-8">
                 {idx + 1}
               </td>
               <td className="py-3.5">
@@ -557,6 +558,9 @@ export default function Groups({ userId }) {
 
   return (
     <div>
+      {/* Palpites Especiais */}
+      <SpecialPredictions userId={userId} now={now} />
+
       <div className="flex items-center gap-2 mb-4">
         <div className="h-px flex-1 bg-gray-700/50" />
         <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">

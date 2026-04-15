@@ -92,7 +92,7 @@ export default function Standings({ userId }) {
 
       <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
         {/* Cabeçalho */}
-        <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-x-4 px-4 py-3 border-b border-gray-700/50">
+        <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3 border-b border-gray-700/50">
           <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold w-8 text-center">
             #
           </span>
@@ -108,6 +108,9 @@ export default function Standings({ userId }) {
           <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16 hidden sm:block">
             Acertos
           </span>
+          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16 hidden sm:block">
+            Especiais
+          </span>
         </div>
 
         {/* Linhas do ranking */}
@@ -119,7 +122,7 @@ export default function Standings({ userId }) {
           return (
             <div
               key={player.profile_id}
-              className={`grid grid-cols-[auto_1fr_auto_auto_auto] gap-x-4 px-4 py-3.5
+              className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3.5
                 items-center border-b border-gray-800/60 last:border-0
                 border-l-2 ${tier.border} ${tier.bg}`}
               style={tier.style}
@@ -163,6 +166,15 @@ export default function Standings({ userId }) {
                   {player.total_acertos}
                 </span>
               </div>
+
+              {/* Especiais */}
+              <div className="w-16 text-center hidden sm:block">
+                <span className={`text-sm font-mono ${
+                  player.special_points > 0 ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  +{player.special_points ?? 0}
+                </span>
+              </div>
             </div>
           )
         })}
@@ -173,6 +185,7 @@ export default function Standings({ userId }) {
         <span>Pts = Pontos totais</span>
         <span className="hidden sm:inline">Cravadas = Placares exatos</span>
         <span className="hidden sm:inline">Acertos = Palpites com pontos</span>
+        <span className="hidden sm:inline">Especiais = Campeão + Artilheiro</span>
       </div>
     </div>
   )

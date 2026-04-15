@@ -287,36 +287,296 @@ function AdminMatchCard({ match, onResult, onReset }) {
 }
 
 /* ═══════════════════════════════════════════════════
+   SpecialQuestionsAdmin — gerenciamento das perguntas especiais
+   ═══════════════════════════════════════════════════ */
+
+function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
+  const [correctAnswer, setCorrectAnswer] = useState(question.correct_answer ?? '')
+  const [savingCorrect, setSavingCorrect] = useState(false)
+  const [editingResponse, setEditingResponse] = useState(null)
+  const [editValue, setEditValue] = useState('')
+
+  const handleSaveCorrectAnswer = async () => {
+    if (!correctAnswer.trim()) return
+    setSavingCorrect(true)
+
+    const { error } = await supabase
+      .from('special_questions')
+      .update({ correct_answer: correctAnswer.trim() })
+      .eq('id', question.id)
+
+    setSavingCorrect(false)
+    if (error) {
+      console.error('Erro ao salvar resposta correta:', error)
+    } else {
+      onUpdate()
+    }
+  }
+
+  const handleClearCorrectAnswer = async () => {
+    setSavingCorrect(true)
+
+    const { error } = await supabase
+      .from('special_questions')
+      .update({ correct_answer: null })
+      .eq('id', question.id)
+
+    setSavingCorrect(false)
+    if (!error) {
+      setCorrectAnswer('')
+      onUpdate()
+    }
+  }
+
+  const handleEditResponse = (resp) => {
+    setEditingResponse(resp.id)
+    setEditValue(resp.answer)
+  }
+
+  const handleSaveResponse = async (respId) => {
+    if (!editValue.trim()) return
+
+    const { error } = await supabase
+      .from('special_predictions')
+      .update({ answer: editValue.trim() })
+      .eq('id', respId)
+
+    if (error) {
+      console.error('Erro ao editar resposta:', error)
+    } else {
+      setEditingResponse(null)
+      onUpdate()
+    }
+  }
+
+  // Agrupa respostas por valor pra ver duplicatas
+  const answerGroups = {}
+  responses.forEach((r) => {
+    const key = r.answer.toLowerCase().trim()
+    if (!answerGroups[key]) answerGroups[key] = { answer: r.answer, count: 0, responses: [] }
+    answerGroups[key].count++
+    answerGroups[key].responses.push(r)
+  })
+  const grouped = Object.values(answerGroups).sort((a, b) => b.count - a.count)
+
+  return (
+    <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-700/40 flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-white">
+          {question.question_text}
+        </h4>
+        <span className="text-yellow-400 text-xs font-bold">
+          {question.points_value} pts
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Resposta correta */}
+        <div>
+          <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold block mb-1.5">
+            Resposta correta
+          </label>
+          <div className="flex gap-2">
+            {question.answer_type === 'team' ? (
+              <select
+                value={correctAnswer}
+                onChange={(e) => { setCorrectAnswer(e.target.value) }}
+                className="flex-1 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
+                  border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
+                  focus:outline-none appearance-none"
+              >
+                <option value="">Selecione a seleção campeã...</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={correctAnswer}
+                onChange={(e) => setCorrectAnswer(e.target.value)}
+                placeholder="Nome do jogador..."
+                className="flex-1 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
+                  border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
+                  focus:outline-none placeholder-gray-500"
+              />
+            )}
+            <button
+              onClick={handleSaveCorrectAnswer}
+              disabled={savingCorrect || !correctAnswer.trim()}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                bg-yellow-600 hover:bg-yellow-700 text-white
+                disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {savingCorrect ? '...' : 'Salvar'}
+            </button>
+            {question.correct_answer && (
+              <button
+                onClick={handleClearCorrectAnswer}
+                disabled={savingCorrect}
+                className="px-3 py-2 text-sm rounded-lg transition-colors
+                  bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                  border border-red-500/20 hover:border-red-500/40"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          {question.correct_answer && (
+            <p className="text-green-400 text-xs mt-1.5">
+              ✓ Definida: {question.correct_answer}
+            </p>
+          )}
+        </div>
+
+        {/* Respostas dos participantes */}
+        <div>
+          <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold block mb-1.5">
+            Respostas ({responses.length} participantes)
+          </label>
+
+          {grouped.length === 0 ? (
+            <p className="text-gray-600 text-xs">Nenhuma resposta ainda.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {grouped.map((group) => (
+                <div key={group.answer} className="space-y-1">
+                  {group.responses.map((resp) => (
+                    <div
+                      key={resp.id}
+                      className="flex items-center justify-between py-1.5 px-3 bg-gray-900/40 rounded-lg"
+                    >
+                      <span className="text-gray-400 text-xs truncate flex-1 min-w-0">
+                        {resp.display_name?.split('@')[0]}
+                      </span>
+
+                      {editingResponse === resp.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="w-36 px-2 py-1 bg-gray-700 text-white text-xs rounded
+                              border border-gray-600 focus:border-yellow-500 focus:outline-none"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveResponse(resp.id)}
+                            className="text-green-400 text-xs hover:text-green-300"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => setEditingResponse(null)}
+                            className="text-gray-500 text-xs hover:text-gray-300"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium ${
+                            question.correct_answer &&
+                            resp.answer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()
+                              ? 'text-green-400'
+                              : 'text-white'
+                          }`}>
+                            {resp.answer}
+                          </span>
+                          {question.answer_type !== 'team' && (
+                            <button
+                              onClick={() => handleEditResponse(resp)}
+                              className="text-gray-600 hover:text-yellow-400 text-[10px] transition-colors"
+                            >
+                              editar
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════
    Admin — página principal
    ═══════════════════════════════════════════════════ */
 
 export default function Admin() {
   const [matches, setMatches] = useState([])
+  const [teams, setTeams] = useState([])
+  const [specialQuestions, setSpecialQuestions] = useState([])
+  const [specialResponses, setSpecialResponses] = useState({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
 
-  useEffect(() => {
-    const fetchMatches = async () => {
-      const { data, error } = await supabase
-        .from('matches')
-        .select(
-          `*,
-          home_team:teams!home_team_id(id, name, code),
-          away_team:teams!away_team_id(id, name, code)`
-        )
-        .order('kickoff_time')
+  const fetchSpecial = async () => {
+    const { data: questions } = await supabase
+      .from('special_questions')
+      .select('*')
+      .order('id')
 
-      if (error) {
-        console.error('Erro ao buscar jogos:', error)
-        setLoading(false)
-        return
+    setSpecialQuestions(questions || [])
+
+    if (questions && questions.length > 0) {
+      const [predsRes, profilesRes] = await Promise.all([
+        supabase.from('special_predictions').select('*'),
+        supabase.from('profiles').select('id, display_name'),
+      ])
+
+      const profilesMap = {}
+      if (profilesRes.data) {
+        profilesRes.data.forEach((p) => { profilesMap[p.id] = p.display_name })
       }
 
-      setMatches(data || [])
+      const grouped = {}
+      if (predsRes.data) {
+        predsRes.data.forEach((r) => {
+          if (!grouped[r.question_id]) grouped[r.question_id] = []
+          grouped[r.question_id].push({
+            ...r,
+            display_name: profilesMap[r.user_id] || r.user_id,
+          })
+        })
+      }
+      setSpecialResponses(grouped)
+    }
+  }
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      const [matchesRes, teamsRes] = await Promise.all([
+        supabase
+          .from('matches')
+          .select(
+            `*,
+            home_team:teams!home_team_id(id, name, code),
+            away_team:teams!away_team_id(id, name, code)`
+          )
+          .order('kickoff_time'),
+        supabase.from('teams').select('id, name, code').order('name'),
+      ])
+
+      if (matchesRes.error) {
+        console.error('Erro ao buscar jogos:', matchesRes.error)
+      } else {
+        setMatches(matchesRes.data || [])
+      }
+
+      setTeams(teamsRes.data || [])
+
+      await fetchSpecial()
       setLoading(false)
     }
 
-    fetchMatches()
+    fetchAll()
   }, [])
 
   const handleResult = (matchId, homeScore, awayScore) => {
@@ -362,6 +622,37 @@ export default function Admin() {
           Painel do Admin
         </h2>
         <div className="h-px flex-1 bg-gray-700/50" />
+      </div>
+
+      {/* Perguntas Especiais */}
+      {specialQuestions.length > 0 && (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm">🏆</span>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+              Perguntas Especiais
+            </h3>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 mb-6">
+            {specialQuestions.map((q) => (
+              <SpecialQuestionAdmin
+                key={q.id}
+                question={q}
+                responses={specialResponses[q.id] || []}
+                teams={teams}
+                onUpdate={fetchSpecial}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Resultados dos Jogos */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-sm">⚽</span>
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+          Resultados dos Jogos
+        </h3>
       </div>
 
       {/* Filtros */}

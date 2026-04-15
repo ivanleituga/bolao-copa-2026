@@ -110,11 +110,11 @@ export default function Rules() {
             <tbody className="text-gray-300">
               <tr className="border-b border-gray-800/60">
                 <td className="py-2.5">Quem será o campeão?</td>
-                <td className="py-2.5 text-center font-bold text-white">25</td>
+                <td className="py-2.5 text-center font-bold text-white">50</td>
               </tr>
               <tr>
                 <td className="py-2.5">Quem será o artilheiro?</td>
-                <td className="py-2.5 text-center font-bold text-white">15</td>
+                <td className="py-2.5 text-center font-bold text-white">50</td>
               </tr>
             </tbody>
           </table>
