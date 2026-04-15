@@ -80,27 +80,27 @@ function TeamFlag({ code, size = 22 }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   StatsTable  (inalterada por enquanto — classificação vem depois)
+   StatsTable
    ═══════════════════════════════════════════════════ */
 
 function StatsTable({ teams }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
   return (
-    <div className="overflow-x-auto flex-1 p-2">
-      <table className="w-full h-full" style={{ minWidth: 380 }}>
+    <div className="overflow-x-auto flex-1 p-2 flex items-center">
+      <table className="w-full" style={{ minWidth: 380 }}>
         <thead>
           <tr className="border-b border-gray-700/50">
             <th
               colSpan={2}
-              className="text-left text-xs text-gray-400 uppercase tracking-wider font-semibold py-2.5 pl-3"
+              className="text-left text-xs text-gray-400 uppercase tracking-wider font-semibold pt-2.5 pb-5 pl-3"
             >
               Classificação
             </th>
             {statCols.map((col) => (
               <th
                 key={col}
-                className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold py-2.5"
+                className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold pt-2.5 pb-5"
                 style={{ width: 40 }}
               >
                 {col}
@@ -118,7 +118,7 @@ function StatsTable({ teams }) {
                   : 'border-l-2 border-l-transparent'
                 }`}
             >
-              <td className="py-3.5 pl-3 text-gray-400 text-sm text-center w-8">
+              <td className="py-5 pl-3 text-gray-400 text-sm text-center w-8">
                 {idx + 1}
               </td>
               <td className="py-3.5">
