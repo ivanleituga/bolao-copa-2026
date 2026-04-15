@@ -2,6 +2,15 @@
 -- BOLÃO COPA 2026 - Migration 002: Sistema de Pontuação
 -- ============================================================
 -- Rodar no SQL Editor do Supabase após 001_schema.sql
+--
+-- Pontuação base (antes do multiplicador):
+--   Placar exato:              15 pts
+--   Vitória + saldo de gols:   12 pts
+--   Vitória + gols de um time:  9 pts
+--   Apenas vencedor:            6 pts
+--   Empate não exato:           7 pts
+--   Palpite estimulado:         2 pts
+--   Errou:                      0 pts
 -- ============================================================
 
 -- 1. Adiciona coluna de pontos na tabela predictions
@@ -19,7 +28,7 @@ BEGIN
     WHEN 'round_of_16' THEN 3
     WHEN 'quarter'     THEN 4
     WHEN 'semi'        THEN 5
-    WHEN 'third_place' THEN 6
+    WHEN 'third_place' THEN 5
     WHEN 'final'       THEN 6
     ELSE 1
   END;
@@ -39,8 +48,6 @@ AS $$
 DECLARE
   actual_result TEXT;
   pred_result TEXT;
-  actual_diff INTEGER;
-  pred_diff INTEGER;
 BEGIN
   -- Determina resultado real
   IF actual_home > actual_away THEN actual_result := 'home';
@@ -54,37 +61,34 @@ BEGIN
   ELSE pred_result := 'draw';
   END IF;
 
-  -- 1. Placar exato → 10 pts
+  -- 1. Placar exato → 15 pts
   IF pred_home = actual_home AND pred_away = actual_away THEN
-    RETURN 10;
+    RETURN 15;
   END IF;
 
   -- 2. Apostou em empate
   IF pred_result = 'draw' THEN
     IF actual_result = 'draw' THEN
-      RETURN 6;   -- Empate não exato
+      RETURN 7;    -- Empate não exato
     ELSE
-      RETURN 1;   -- Palpite estimulado
+      RETURN 2;    -- Palpite estimulado
     END IF;
   END IF;
 
   -- 3. Apostou em vencedor
   IF pred_result = actual_result THEN
-    actual_diff := actual_home - actual_away;
-    pred_diff := pred_home - pred_away;
-
-    -- Saldo de gols correto → 7
-    IF actual_diff = pred_diff THEN
-      RETURN 7;
+    -- Saldo de gols correto → 12
+    IF (actual_home - actual_away) = (pred_home - pred_away) THEN
+      RETURN 12;
     END IF;
 
-    -- Gols do vencedor ou do perdedor corretos → 6
+    -- Gols do vencedor ou do perdedor corretos → 9
     IF pred_home = actual_home OR pred_away = actual_away THEN
-      RETURN 6;
+      RETURN 9;
     END IF;
 
-    -- Apenas vencedor → 5
-    RETURN 5;
+    -- Apenas vencedor → 6
+    RETURN 6;
   END IF;
 
   -- 4. Errou tudo
@@ -133,7 +137,7 @@ SELECT
   COALESCE(SUM(pr.points), 0) AS total_points,
   COUNT(CASE WHEN pr.points > 0 THEN 1 END) AS total_acertos,
   COUNT(CASE WHEN pr.points = (
-    10 * get_round_multiplier(m.round)
+    15 * get_round_multiplier(m.round)
   ) THEN 1 END) AS cravadas,
   COUNT(pr.id) AS total_palpites
 FROM profiles p
@@ -150,4 +154,14 @@ ORDER BY total_points DESC, cravadas DESC, total_acertos DESC;
 --
 -- Consultar ranking:
 --   SELECT * FROM ranking;
+--
+-- Verificação da pontuação:
+--   SELECT calc_prediction_points(2, 1, 2, 1);  -- 15 (exato)
+--   SELECT calc_prediction_points(3, 2, 2, 1);  -- 12 (saldo)
+--   SELECT calc_prediction_points(2, 0, 2, 1);  -- 9  (gols vencedor)
+--   SELECT calc_prediction_points(3, 1, 2, 1);  -- 9  (gols perdedor)
+--   SELECT calc_prediction_points(3, 0, 2, 1);  -- 6  (só vencedor)
+--   SELECT calc_prediction_points(1, 1, 2, 1);  -- 2  (estimulado)
+--   SELECT calc_prediction_points(0, 0, 1, 1);  -- 7  (empate não exato)
+--   SELECT calc_prediction_points(0, 1, 2, 1);  -- 0  (errou)
 -- ============================================================

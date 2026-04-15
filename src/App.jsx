@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Groups from './pages/Groups'
 import Standings from './pages/Standings'
+import Rules from './pages/Rules'
 
 const tabs = [
   { id: 'groups', label: 'Tabela e Palpites' },
@@ -129,7 +130,7 @@ export default function App() {
       {/* Conteúdo da aba ativa */}
       {activeTab === 'groups' && <Groups userId={session.user.id} />}
       {activeTab === 'standings' && <Standings userId={session.user.id} />}
-      {activeTab === 'rules' && <Placeholder title="Regulamento do Bolão" />}
+      {activeTab === 'rules' && <Rules />}
     </Layout>
   )
 }
