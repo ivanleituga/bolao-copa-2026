@@ -43,10 +43,11 @@ function TeamFlag({ code, size = 24 }) {
    AdminMatchCard — card de um jogo com input de resultado
    ═══════════════════════════════════════════════════ */
 
-function AdminMatchCard({ match, onResult }) {
+function AdminMatchCard({ match, onResult, onReset }) {
   const [home, setHome] = useState(match.home_score ?? '')
   const [away, setAway] = useState(match.away_score ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [confirmingReset, setConfirmingReset] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -87,7 +88,29 @@ function AdminMatchCard({ match, onResult }) {
 
   const handleCancel = () => {
     setConfirming(false)
+    setConfirmingReset(false)
     setError(null)
+  }
+
+  const handleReset = async () => {
+    setSaving(true)
+    setError(null)
+
+    const { error: rpcError } = await supabase.rpc('reset_match_result', {
+      p_match_id: match.id,
+    })
+
+    if (rpcError) {
+      console.error('Erro ao reverter resultado:', rpcError)
+      setError('Erro ao reverter resultado')
+      setSaving(false)
+      setConfirmingReset(false)
+      return
+    }
+
+    setSaving(false)
+    setConfirmingReset(false)
+    onReset(match.id)
   }
 
   const inputClasses = `w-12 h-12 text-center bg-gray-700/80 text-white font-bold text-xl rounded-lg
@@ -173,18 +196,32 @@ function AdminMatchCard({ match, onResult }) {
         )}
 
         {/* Botões */}
-        <div className="mt-4">
-          {!confirming ? (
-            <button
-              onClick={handleSubmit}
-              disabled={!hasInput}
-              className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors
-                disabled:opacity-30 disabled:cursor-not-allowed
-                bg-yellow-600 hover:bg-yellow-700 text-white"
-            >
-              {isFinished ? 'Corrigir resultado' : 'Registrar resultado'}
-            </button>
-          ) : (
+        <div className="mt-4 space-y-2">
+          {!confirming && !confirmingReset && (
+            <>
+              <button
+                onClick={handleSubmit}
+                disabled={!hasInput}
+                className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors
+                  disabled:opacity-30 disabled:cursor-not-allowed
+                  bg-yellow-600 hover:bg-yellow-700 text-white"
+              >
+                {isFinished ? 'Corrigir resultado' : 'Registrar resultado'}
+              </button>
+              {isFinished && (
+                <button
+                  onClick={() => { setConfirmingReset(true); setError(null) }}
+                  className="w-full py-2 text-xs font-medium rounded-lg transition-colors
+                    bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                    border border-red-500/20 hover:border-red-500/40"
+                >
+                  Excluir resultado
+                </button>
+              )}
+            </>
+          )}
+
+          {confirming && (
             <div className="space-y-2">
               <p className="text-center text-yellow-400 text-xs font-medium">
                 Confirma {match.home_team.name} {parseInt(home)} × {parseInt(away)} {match.away_team.name}?
@@ -209,6 +246,36 @@ function AdminMatchCard({ match, onResult }) {
                     disabled:opacity-50"
                 >
                   {saving ? 'Salvando...' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {confirmingReset && (
+            <div className="space-y-2">
+              <p className="text-center text-red-400 text-xs font-medium">
+                Excluir resultado de {match.home_team.name} × {match.away_team.name}?
+              </p>
+              <p className="text-center text-gray-500 text-[10px]">
+                O jogo volta pra "aguardando" e os pontos são zerados.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancel}
+                  disabled={saving}
+                  className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors
+                    bg-gray-700 hover:bg-gray-600 text-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={saving}
+                  className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors
+                    bg-red-600 hover:bg-red-700 text-white
+                    disabled:opacity-50"
+                >
+                  {saving ? 'Excluindo...' : 'Excluir'}
                 </button>
               </div>
             </div>
@@ -257,6 +324,16 @@ export default function Admin() {
       prev.map((m) =>
         m.id === matchId
           ? { ...m, home_score: homeScore, away_score: awayScore, status: 'finished' }
+          : m
+      )
+    )
+  }
+
+  const handleReset = (matchId) => {
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.id === matchId
+          ? { ...m, home_score: null, away_score: null, status: 'scheduled' }
           : m
       )
     )
@@ -329,6 +406,7 @@ export default function Admin() {
               key={match.id}
               match={match}
               onResult={handleResult}
+              onReset={handleReset}
             />
           ))}
         </div>

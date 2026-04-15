@@ -137,7 +137,34 @@ BEGIN
 END;
 $$;
 
--- 5. View útil: ranking geral dos participantes
+-- 5. Função que o admin chama para reverter um resultado
+--    Volta o jogo para "scheduled" e zera os pontos dos palpites
+CREATE OR REPLACE FUNCTION reset_match_result(p_match_id INTEGER)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+BEGIN
+  SELECT is_admin INTO v_is_admin FROM profiles WHERE id = auth.uid();
+  IF NOT v_is_admin THEN
+    RAISE EXCEPTION 'Apenas administradores podem reverter resultados';
+  END IF;
+
+  UPDATE matches
+  SET home_score = NULL,
+      away_score = NULL,
+      status = 'scheduled'
+  WHERE id = p_match_id;
+
+  UPDATE predictions
+  SET points = NULL
+  WHERE match_id = p_match_id;
+END;
+$$;
+
+-- 6. View útil: ranking geral dos participantes
 CREATE OR REPLACE VIEW ranking AS
 SELECT
   p.id AS profile_id,
