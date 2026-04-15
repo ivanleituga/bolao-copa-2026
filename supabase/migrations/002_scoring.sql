@@ -97,6 +97,7 @@ END;
 $$;
 
 -- 4. Função que o admin chama ao inserir resultado de um jogo
+--    Verifica se o chamador é admin antes de executar
 --    Atualiza o match e recalcula pontos de todos os palpites
 CREATE OR REPLACE FUNCTION process_match_result(
   p_match_id INTEGER,
@@ -110,7 +111,14 @@ AS $$
 DECLARE
   v_round TEXT;
   v_multiplier INTEGER;
+  v_is_admin BOOLEAN;
 BEGIN
+  -- Verifica se o chamador é admin
+  SELECT is_admin INTO v_is_admin FROM profiles WHERE id = auth.uid();
+  IF NOT v_is_admin THEN
+    RAISE EXCEPTION 'Apenas administradores podem registrar resultados';
+  END IF;
+
   -- Atualiza o placar e status do jogo
   UPDATE matches
   SET home_score = p_home_score,
@@ -147,7 +155,7 @@ GROUP BY p.id, p.display_name
 ORDER BY total_points DESC, cravadas DESC, total_acertos DESC;
 
 -- ============================================================
--- Uso pelo admin (via SQL Editor ou via app):
+-- Uso pelo admin (via tela de admin ou SQL Editor):
 --
 --   SELECT process_match_result(1, 3, 1);
 --   -- Jogo id=1 terminou 3x1, todos os palpites são recalculados

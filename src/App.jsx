@@ -4,24 +4,7 @@ import Login from './pages/Login'
 import Groups from './pages/Groups'
 import Standings from './pages/Standings'
 import Rules from './pages/Rules'
-
-const tabs = [
-  { id: 'groups', label: 'Tabela e Palpites' },
-  { id: 'standings', label: 'Classificação' },
-  { id: 'rules', label: 'Regulamento' },
-]
-
-function Placeholder({ title }) {
-  return (
-    <div className="flex items-center justify-center py-20">
-      <div className="text-center">
-        <p className="text-gray-500 text-lg mb-1">🚧</p>
-        <p className="text-gray-400 text-sm font-medium">{title}</p>
-        <p className="text-gray-600 text-xs mt-1">Em construção</p>
-      </div>
-    </div>
-  )
-}
+import Admin from './pages/Admin'
 
 function Layout({ user, profile, children }) {
   const handleLogout = async () => {
@@ -112,6 +95,15 @@ export default function App() {
     return <Login onLogin={() => {}} />
   }
 
+  const isAdmin = profile?.is_admin === true
+
+  const tabs = [
+    { id: 'groups', label: 'Tabela e Palpites' },
+    { id: 'standings', label: 'Classificação' },
+    { id: 'rules', label: 'Regulamento' },
+    ...(isAdmin ? [{ id: 'admin', label: '⚙ Admin' }] : []),
+  ]
+
   return (
     <Layout user={session.user} profile={profile}>
       {/* Tabs de navegação */}
@@ -120,7 +112,9 @@ export default function App() {
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`flex-1 py-2.5 text-sm font-semibold text-center transition-colors
                        ${activeTab === tab.id
-                         ? 'text-green-400 border-b-2 border-green-400'
+                         ? tab.id === 'admin'
+                           ? 'text-yellow-400 border-b-2 border-yellow-400'
+                           : 'text-green-400 border-b-2 border-green-400'
                          : 'text-gray-500 hover:text-gray-300'}`}>
             {tab.label}
           </button>
@@ -131,6 +125,7 @@ export default function App() {
       {activeTab === 'groups' && <Groups userId={session.user.id} />}
       {activeTab === 'standings' && <Standings userId={session.user.id} />}
       {activeTab === 'rules' && <Rules />}
+      {activeTab === 'admin' && isAdmin && <Admin />}
     </Layout>
   )
 }
