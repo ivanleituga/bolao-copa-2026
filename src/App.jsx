@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Groups from './pages/Groups'
+import Standings from './pages/Standings'
 
 const tabs = [
   { id: 'groups', label: 'Tabela e Palpites' },
@@ -127,7 +128,7 @@ export default function App() {
 
       {/* Conteúdo da aba ativa */}
       {activeTab === 'groups' && <Groups userId={session.user.id} />}
-      {activeTab === 'standings' && <Placeholder title="Classificação Geral" />}
+      {activeTab === 'standings' && <Standings userId={session.user.id} />}
       {activeTab === 'rules' && <Placeholder title="Regulamento do Bolão" />}
     </Layout>
   )
