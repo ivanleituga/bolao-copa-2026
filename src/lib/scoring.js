@@ -15,10 +15,10 @@ export function getPointsLabel(points, multiplier = 1, predHome, predAway) {
   const base = multiplier > 0 ? points / multiplier : points
   const predDraw = predHome === predAway
 
-  if (base === 10) return 'Placar exato'
-  if (base === 7) return 'Saldo de gols'
-  if (base === 6) return predDraw ? 'Empate inexato' : 'Gols de um time'
-  if (base === 5) return 'Vencedor'
+  if (base === 10) return 'Cravou'
+  if (base === 7) return 'V + Diferença de gols'
+  if (base === 6) return predDraw ? 'Apenas o empate' : 'V + Gols de um time'
+  if (base === 5) return 'Apenas o vencedor'
   if (base === 1) return 'Palpite estimulado'
   if (base === 0) return 'Errou'
   return ''
@@ -30,9 +30,8 @@ export function getPointsLabel(points, multiplier = 1, predHome, predAway) {
 export function getPointsColor(points, multiplier = 1) {
   const base = multiplier > 0 ? points / multiplier : points
 
-  if (base === 10) return 'text-yellow-400'
-  if (base >= 6) return 'text-green-400'
-  if (base === 5) return 'text-blue-400'
+  if (base === 10) return 'text-green-400'
+  if (base >= 5) return 'text-blue-400'
   if (base === 1) return 'text-gray-400'
   return 'text-red-400'
 }
