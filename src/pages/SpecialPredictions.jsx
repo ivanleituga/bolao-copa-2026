@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFlagUrl } from '../lib/flags'
+import { PLAYERS } from '../lib/players'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -79,6 +80,8 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
 
   // Encontra o time selecionado pra mostrar a bandeira
   const selectedTeam = isTeam ? teams.find((t) => t.name === answer) : null
+  const isPlayer = question.answer_type === 'player'
+  const selectedPlayer = isPlayer ? PLAYERS.find((p) => p.name === answer) : null
 
   return (
     <div className="bg-gray-900/60 rounded-lg p-4">
@@ -118,18 +121,29 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
           </select>
         </div>
       ) : (
-        <input
-          type="text"
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          onBlur={() => handleSave()}
-          disabled={!isOpen}
-          placeholder="Nome do jogador..."
-          className="w-full px-4 py-2.5 bg-gray-700/80 text-white text-sm rounded-lg
-            border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
-            disabled:opacity-50 disabled:cursor-not-allowed transition-colors
-            placeholder-gray-500"
-        />
+        <div className="relative">
+          {selectedPlayer && (
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+              <TeamFlag code={selectedPlayer.country} size={20} />
+            </div>
+          )}
+          <select
+            value={answer}
+            onChange={handleTeamChange}
+            disabled={!isOpen}
+            className={`w-full py-2.5 bg-gray-700/80 text-white text-sm rounded-lg
+              border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
+              disabled:opacity-50 disabled:cursor-not-allowed transition-colors appearance-none
+              ${selectedPlayer ? 'pl-10 pr-4' : 'px-4'}`}
+          >
+            <option value="">Selecione um jogador...</option>
+            {PLAYERS.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* Status */}

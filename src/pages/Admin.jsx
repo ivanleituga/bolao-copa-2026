@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFlagUrl } from '../lib/flags'
 import { getRoundLabel } from '../lib/scoring'
+import { PLAYERS } from '../lib/players'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -293,8 +294,6 @@ function AdminMatchCard({ match, onResult, onReset }) {
 function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
   const [correctAnswer, setCorrectAnswer] = useState(question.correct_answer ?? '')
   const [savingCorrect, setSavingCorrect] = useState(false)
-  const [editingResponse, setEditingResponse] = useState(null)
-  const [editValue, setEditValue] = useState('')
 
   const handleSaveCorrectAnswer = async () => {
     if (!correctAnswer.trim()) return
@@ -324,27 +323,6 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
     setSavingCorrect(false)
     if (!error) {
       setCorrectAnswer('')
-      onUpdate()
-    }
-  }
-
-  const handleEditResponse = (resp) => {
-    setEditingResponse(resp.id)
-    setEditValue(resp.answer)
-  }
-
-  const handleSaveResponse = async (respId) => {
-    if (!editValue.trim()) return
-
-    const { error } = await supabase
-      .from('special_predictions')
-      .update({ answer: editValue.trim() })
-      .eq('id', respId)
-
-    if (error) {
-      console.error('Erro ao editar resposta:', error)
-    } else {
-      setEditingResponse(null)
       onUpdate()
     }
   }
@@ -391,15 +369,18 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
                 ))}
               </select>
             ) : (
-              <input
-                type="text"
+              <select
                 value={correctAnswer}
-                onChange={(e) => setCorrectAnswer(e.target.value)}
-                placeholder="Nome do jogador..."
+                onChange={(e) => { setCorrectAnswer(e.target.value) }}
                 className="flex-1 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
                   border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
-                  focus:outline-none placeholder-gray-500"
-              />
+                  focus:outline-none appearance-none"
+              >
+                <option value="">Selecione o artilheiro...</option>
+                {PLAYERS.map((p) => (
+                  <option key={p.name} value={p.name}>{p.name}</option>
+                ))}
+              </select>
             )}
             <button
               onClick={handleSaveCorrectAnswer}
@@ -450,49 +431,14 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
                         {resp.display_name?.split('@')[0]}
                       </span>
 
-                      {editingResponse === resp.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            className="w-36 px-2 py-1 bg-gray-700 text-white text-xs rounded
-                              border border-gray-600 focus:border-yellow-500 focus:outline-none"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => handleSaveResponse(resp.id)}
-                            className="text-green-400 text-xs hover:text-green-300"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            onClick={() => setEditingResponse(null)}
-                            className="text-gray-500 text-xs hover:text-gray-300"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${
-                            question.correct_answer &&
-                            resp.answer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()
-                              ? 'text-green-400'
-                              : 'text-white'
-                          }`}>
-                            {resp.answer}
-                          </span>
-                          {question.answer_type !== 'team' && (
-                            <button
-                              onClick={() => handleEditResponse(resp)}
-                              className="text-gray-600 hover:text-yellow-400 text-[10px] transition-colors"
-                            >
-                              editar
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <span className={`text-sm font-medium ${
+                        question.correct_answer &&
+                        resp.answer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()
+                          ? 'text-green-400'
+                          : 'text-white'
+                      }`}>
+                        {resp.answer}
+                      </span>
                     </div>
                   ))}
                 </div>
