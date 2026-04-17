@@ -359,7 +359,7 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
               <select
                 value={correctAnswer}
                 onChange={(e) => { setCorrectAnswer(e.target.value) }}
-                className="flex-1 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
+                className="flex-1 min-w-0 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
                   border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
                   focus:outline-none appearance-none"
               >
@@ -372,7 +372,7 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
               <select
                 value={correctAnswer}
                 onChange={(e) => { setCorrectAnswer(e.target.value) }}
-                className="flex-1 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
+                className="flex-1 min-w-0 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
                   border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
                   focus:outline-none appearance-none"
               >
