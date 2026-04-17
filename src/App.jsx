@@ -107,10 +107,10 @@ export default function App() {
   return (
     <Layout user={session.user} profile={profile}>
       {/* Tabs de navegação */}
-      <div className="flex border-b border-gray-700/50 mb-4">
+      <div className="flex overflow-x-auto border-b border-gray-700/50 mb-4 scrollbar-hide">
         {tabs.map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-2.5 text-sm font-semibold text-center transition-colors
+            className={`whitespace-nowrap px-4 py-2.5 text-xs sm:text-sm font-semibold text-center transition-colors
                        ${activeTab === tab.id
                          ? tab.id === 'admin'
                            ? 'text-yellow-400 border-b-2 border-yellow-400'

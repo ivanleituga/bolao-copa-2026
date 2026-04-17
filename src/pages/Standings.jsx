@@ -91,101 +91,105 @@ export default function Standings({ userId }) {
       </div>
 
       <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
-        {/* Cabeçalho */}
-        <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3 border-b border-gray-700/50">
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold w-8 text-center">
-            #
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-            Participante
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
-            Pts
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
-            Cravadas
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
-            Acertos
-          </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
-            Especiais
-          </span>
-        </div>
-
-        {/* Linhas do ranking */}
-        {ranking.map((player, idx) => {
-          const position = idx + 1
-          const isMe = player.profile_id === userId
-          const tier = getTierStyle(position, total)
-
-          return (
-            <div
-              key={player.profile_id}
-              className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3.5
-                items-center border-b border-gray-800/60 last:border-0
-                border-l-2 ${tier.border} ${tier.bg}`}
-              style={tier.style}
-            >
-              {/* Posição */}
-              <div className="w-8 flex justify-center">
-                <Medal position={position} total={total} />
-              </div>
-
-              {/* Nome */}
-              <div className="min-w-0">
-                <span className={`text-base font-medium truncate block
-                  ${isMe ? 'text-green-400' : 'text-white'}`}>
-                  {player.display_name?.split('@')[0]}
-                </span>
-                {isMe && (
-                  <span className="text-[10px] text-green-500/70 uppercase tracking-wider">
-                    Você
-                  </span>
-                )}
-              </div>
-
-              {/* Pontos */}
-              <div className="w-16 text-center">
-                <span className={`text-lg font-bold
-                  ${position === 1 ? 'text-yellow-400' : 'text-white'}`}>
-                  {player.total_points}
-                </span>
-              </div>
-
-              {/* Cravadas */}
-              <div className="w-16 text-center hidden sm:block">
-                <span className="text-sm text-yellow-400 font-mono">
-                  {player.cravadas}
-                </span>
-              </div>
-
-              {/* Acertos */}
-              <div className="w-16 text-center hidden sm:block">
-                <span className="text-sm text-gray-400 font-mono">
-                  {player.total_acertos}
-                </span>
-              </div>
-
-              {/* Especiais */}
-              <div className="w-16 text-center hidden sm:block">
-                <span className={`text-sm font-mono ${
-                  player.special_points > 0 ? 'text-green-400' : 'text-red-400'
-                }`}>
-                  +{player.special_points ?? 0}
-                </span>
-              </div>
+        <div className="overflow-x-auto scrollbar-hide">
+          <div style={{ minWidth: 520 }}>
+            {/* Cabeçalho */}
+            <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3 border-b border-gray-700/50">
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold w-8 text-center">
+                #
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                Participante
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
+                Pts
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
+                Cravadas
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
+                Acertos
+              </span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
+                Especiais
+              </span>
             </div>
-          )
-        })}
+
+            {/* Linhas do ranking */}
+            {ranking.map((player, idx) => {
+              const position = idx + 1
+              const isMe = player.profile_id === userId
+              const tier = getTierStyle(position, total)
+
+              return (
+                <div
+                  key={player.profile_id}
+                  className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3.5
+                    items-center border-b border-gray-800/60 last:border-0
+                    border-l-2 ${tier.border} ${tier.bg}`}
+                  style={tier.style}
+                >
+                  {/* Posição */}
+                  <div className="w-8 flex justify-center">
+                    <Medal position={position} total={total} />
+                  </div>
+
+                  {/* Nome */}
+                  <div className="min-w-0">
+                    <span className={`text-base font-medium truncate block
+                      ${isMe ? 'text-green-400' : 'text-white'}`}>
+                      {player.display_name?.split('@')[0]}
+                    </span>
+                    {isMe && (
+                      <span className="text-[10px] text-green-500/70 uppercase tracking-wider">
+                        Você
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Pontos */}
+                  <div className="w-16 text-center">
+                    <span className={`text-lg font-bold
+                      ${position === 1 ? 'text-yellow-400' : 'text-white'}`}>
+                      {player.total_points}
+                    </span>
+                  </div>
+
+                  {/* Cravadas */}
+                  <div className="w-16 text-center">
+                    <span className="text-sm text-yellow-400 font-mono">
+                      {player.cravadas}
+                    </span>
+                  </div>
+
+                  {/* Acertos */}
+                  <div className="w-16 text-center">
+                    <span className="text-sm text-gray-400 font-mono">
+                      {player.total_acertos}
+                    </span>
+                  </div>
+
+                  {/* Especiais */}
+                  <div className="w-16 text-center">
+                    <span className={`text-sm font-mono ${
+                      player.special_points > 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      +{player.special_points ?? 0}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Legenda */}
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 justify-center text-[10px] text-gray-600 uppercase tracking-wider">
         <span>Pts = Pontos totais</span>
-        <span className="hidden sm:inline">Cravadas = Placares exatos</span>
-        <span className="hidden sm:inline">Acertos = Palpites com pontos</span>
-        <span className="hidden sm:inline">Especiais = Campeão + Artilheiro</span>
+        <span>Cravadas = Placares exatos</span>
+        <span>Acertos = Palpites com pontos</span>
+        <span>Especiais = Campeão + Artilheiro</span>
       </div>
     </div>
   )
