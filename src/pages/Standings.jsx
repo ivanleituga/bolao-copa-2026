@@ -102,13 +102,13 @@ export default function Standings({ userId }) {
           <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
             Pts
           </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16 hidden sm:block">
+          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
             Cravadas
           </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16 hidden sm:block">
+          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
             Acertos
           </span>
-          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16 hidden sm:block">
+          <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold text-center w-16">
             Especiais
           </span>
         </div>

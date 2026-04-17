@@ -179,7 +179,7 @@ LEFT JOIN (
   SELECT
     pr.user_id,
     SUM(pr.points) AS pts,
-    COUNT(CASE WHEN pr.points > 0 THEN 1 END) AS acertos,
+    COUNT(CASE WHEN pr.points > 0 AND pr.points != 2 * get_round_multiplier(m.round) THEN 1 END) AS acertos,
     COUNT(CASE WHEN pr.points = 15 * get_round_multiplier(m.round) THEN 1 END) AS cravadas,
     COUNT(pr.id) AS palpites
   FROM predictions pr
