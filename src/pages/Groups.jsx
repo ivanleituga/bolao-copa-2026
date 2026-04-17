@@ -88,20 +88,20 @@ function StatsTable({ teams }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
   return (
-    <div className="overflow-x-auto flex-1 p-2">
-      <table className="w-full h-full" style={{ minWidth: 380 }}>
+    <div className="overflow-x-auto flex-1 p-2 flex items-center">
+      <table className="w-full" style={{ minWidth: 380 }}>
         <thead>
           <tr className="border-b border-gray-700/50">
             <th
               colSpan={2}
-              className="text-left text-xs text-gray-400 uppercase tracking-wider font-semibold pt-2.5 pb-5 pl-3"
+              className="text-left text-xs text-gray-400 uppercase tracking-wider font-semibold pt-5 pb-7 pl-3"
             >
               Classificação
             </th>
             {statCols.map((col) => (
               <th
                 key={col}
-                className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold pt-2.5 pb-5"
+                className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold pt-5 pb-7"
                 style={{ width: 40 }}
               >
                 {col}
@@ -119,10 +119,10 @@ function StatsTable({ teams }) {
                   : 'border-l-2 border-l-transparent'
                 }`}
             >
-              <td className="py-3.5 pl-3 text-gray-400 text-sm text-center w-8">
+              <td className="py-5 pl-3 text-gray-400 text-sm text-center w-8">
                 {idx + 1}
               </td>
-              <td className="py-3.5">
+              <td className="py-5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <TeamFlag code={team.code} size={26} />
                   <span className="text-white text-base font-medium truncate">
@@ -133,7 +133,7 @@ function StatsTable({ teams }) {
               {statCols.map((col, i) => (
                 <td
                   key={col}
-                  className={`py-3.5 text-center font-mono text-base
+                  className={`py-5 text-center font-mono text-base
                     ${i === 0 ? 'text-white font-bold' : 'text-gray-400'}`}
                   style={{ width: 40 }}
                 >
@@ -184,13 +184,18 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
 
     if (error) {
       console.error('Erro ao salvar palpite:', error)
-      setSaveStatus('error')
+      // RLS bloqueia quando o jogo já foi finalizado ou o prazo passou
+      if (error.code === '42501' || error.message?.includes('row-level security')) {
+        setSaveStatus('blocked')
+      } else {
+        setSaveStatus('error')
+      }
     } else {
       setSaveStatus('saved')
       onSaved(match.id, h, a)
     }
 
-    setTimeout(() => setSaveStatus(null), 2500)
+    setTimeout(() => setSaveStatus(null), 4000)
   }
 
   const inputClasses = `w-9 h-9 text-center bg-gray-700/80 text-white font-bold text-base rounded-lg
@@ -299,6 +304,9 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
             )}
             {saveStatus === 'saved' && (
               <span className="text-green-400">✓ Salvo</span>
+            )}
+            {saveStatus === 'blocked' && (
+              <span className="text-red-400">🔒 Palpite bloqueado — partida já iniciada</span>
             )}
             {saveStatus === 'error' && (
               <span className="text-red-400">Erro ao salvar</span>
@@ -527,6 +535,51 @@ export default function Groups({ userId }) {
     }
 
     fetchAll()
+  }, [userId])
+
+  // Refetch de status dos jogos a cada 30 segundos
+  // Detecta quando o admin finaliza um jogo e atualiza a UI
+  useEffect(() => {
+    const refreshStatuses = async () => {
+      const { data } = await supabase
+        .from('matches')
+        .select('id, status, home_score, away_score')
+        .eq('round', 'group')
+
+      if (!data) return
+
+      const statusMap = {}
+      data.forEach((m) => { statusMap[m.id] = m })
+
+      setMatches((prev) => {
+        const updated = { ...prev }
+        Object.keys(updated).forEach((letter) => {
+          updated[letter] = updated[letter].map((m) => {
+            const fresh = statusMap[m.id]
+            if (fresh && (fresh.status !== m.status || fresh.home_score !== m.home_score)) {
+              return { ...m, status: fresh.status, home_score: fresh.home_score, away_score: fresh.away_score }
+            }
+            return m
+          })
+        })
+        return updated
+      })
+
+      // Também atualiza os pontos dos palpites quando jogos são finalizados
+      const { data: predsData } = await supabase
+        .from('predictions')
+        .select('*')
+        .eq('user_id', userId)
+
+      if (predsData) {
+        const predsMap = {}
+        predsData.forEach((p) => { predsMap[p.match_id] = p })
+        setPredictions(predsMap)
+      }
+    }
+
+    const interval = setInterval(refreshStatuses, 30000)
+    return () => clearInterval(interval)
   }, [userId])
 
   // Callback quando um palpite é salvo — atualiza o state local

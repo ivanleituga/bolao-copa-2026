@@ -127,14 +127,12 @@ CREATE TABLE predictions (
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 
 -- Todos logados podem ver todos os palpites (pra ranking e comparação)
--- NOTA: Se quiser esconder palpites dos outros até o jogo começar, 
--- a gente ajusta essa policy depois
 CREATE POLICY "Palpites visíveis para todos logados"
   ON predictions FOR SELECT
   TO authenticated
   USING (true);
 
--- Usuário só pode inserir palpite em seu nome E se faltar mais de 5 min pro jogo
+-- Usuário só pode inserir palpite se o jogo ainda não começou e não foi finalizado
 CREATE POLICY "Usuário cria palpite antes do deadline"
   ON predictions FOR INSERT
   TO authenticated
@@ -144,10 +142,11 @@ CREATE POLICY "Usuário cria palpite antes do deadline"
       SELECT 1 FROM matches 
       WHERE matches.id = match_id 
       AND matches.kickoff_time > NOW() + INTERVAL '5 minutes'
+      AND matches.status = 'scheduled'
     )
   );
 
--- Usuário só pode editar próprio palpite E se ainda estiver antes do deadline
+-- Usuário só pode editar próprio palpite se o jogo não foi finalizado
 CREATE POLICY "Usuário edita palpite antes do deadline"
   ON predictions FOR UPDATE
   TO authenticated
@@ -158,6 +157,7 @@ CREATE POLICY "Usuário edita palpite antes do deadline"
       SELECT 1 FROM matches 
       WHERE matches.id = match_id 
       AND matches.kickoff_time > NOW() + INTERVAL '5 minutes'
+      AND matches.status = 'scheduled'
     )
   );
 
@@ -171,6 +171,7 @@ CREATE POLICY "Usuário deleta próprio palpite"
       SELECT 1 FROM matches 
       WHERE matches.id = match_id 
       AND matches.kickoff_time > NOW() + INTERVAL '5 minutes'
+      AND matches.status = 'scheduled'
     )
   );
 
