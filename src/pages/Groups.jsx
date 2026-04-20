@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFlagUrl } from '../lib/flags'
 import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
@@ -35,6 +35,16 @@ function countdownColor(ms) {
   if (ms <= 600000) return 'text-red-400'
   if (ms <= 3600000) return 'text-yellow-400'
   return 'text-gray-400'
+}
+
+/** Formata o timestamp de quando o palpite foi salvo. Ex: "10/06 • 14:35" */
+function formatSavedTime(iso) {
+  const d = new Date(iso)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}/${mm} • ${hh}:${min}`
 }
 
 /** Atribui número da rodada (1, 2 ou 3) dentro de cada grupo */
@@ -155,49 +165,69 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
   const [away, setAway] = useState(prediction?.away_score ?? '')
   const [saveStatus, setSaveStatus] = useState(null)
 
+  // Ref pra sempre ter a versão mais recente de onSaved sem precisar
+  // incluí-la nas deps do useEffect (evita re-runs desnecessários do debounce)
+  const onSavedRef = useRef(onSaved)
+  useEffect(() => { onSavedRef.current = onSaved })
+
   const deadline = new Date(match.kickoff_time).getTime() - 5 * 60 * 1000
   const remaining = deadline - now
   const isOpen = remaining > 0 && match.status !== 'finished'
   const isFinished = match.status === 'finished' && match.home_score != null
 
-  const handleSave = async () => {
-    const h = parseInt(home)
-    const a = parseInt(away)
-    if (isNaN(h) || isNaN(a) || h < 0 || a < 0) return
+  // Estado derivado: os inputs atuais batem com o palpite salvo?
+  const h = parseInt(home)
+  const a = parseInt(away)
+  const hasValidInputs = !isNaN(h) && !isNaN(a) && h >= 0 && a >= 0
+  const matchesPrediction = hasValidInputs && prediction
+    && prediction.home_score === h && prediction.away_score === a
+
+  // Auto-save com debounce de 800ms após a última alteração dos inputs
+  // Substitui o onBlur antigo, que era pouco confiável em mobile
+  useEffect(() => {
     if (!isOpen) return
-    if (prediction && prediction.home_score === h && prediction.away_score === a) return
+    if (!hasValidInputs) return
+    if (matchesPrediction) return  // já salvo, nada a fazer
 
-    setSaveStatus('saving')
+    const timer = setTimeout(async () => {
+      setSaveStatus('saving')
 
-    const { error } = await supabase.from('predictions').upsert(
-      {
-        user_id: userId,
-        match_id: match.id,
-        home_score: h,
-        away_score: a,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,match_id' }
-    )
+      const { error } = await supabase.from('predictions').upsert(
+        {
+          user_id: userId,
+          match_id: match.id,
+          home_score: h,
+          away_score: a,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,match_id' }
+      )
 
-    if (error) {
-      console.error('Erro ao salvar palpite:', error)
-      // RLS bloqueia quando o jogo já foi finalizado ou o prazo passou
-      if (error.code === '42501' || error.message?.includes('row-level security')) {
-        setSaveStatus('blocked')
+      if (error) {
+        console.error('Erro ao salvar palpite:', error)
+        if (error.code === '42501' || error.message?.includes('row-level security')) {
+          setSaveStatus('blocked')
+        } else {
+          setSaveStatus('error')
+        }
+        setTimeout(() => setSaveStatus(null), 4000)
       } else {
-        setSaveStatus('error')
+        // Limpa o status — a UI volta a refletir o prediction atualizado
+        // (borda verde + timestamp persistente)
+        setSaveStatus(null)
+        onSavedRef.current(match.id, h, a)
       }
-    } else {
-      setSaveStatus('saved')
-      onSaved(match.id, h, a)
-    }
+    }, 800)
 
-    setTimeout(() => setSaveStatus(null), 4000)
-  }
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [home, away, isOpen, matchesPrediction, userId, match.id])
+
+  // Borda verde persistente quando o valor nos inputs bate com o palpite salvo
+  const inputBorder = matchesPrediction ? 'border-green-500/60' : 'border-gray-600'
 
   const inputClasses = `w-9 h-9 text-center bg-gray-700/80 text-white font-bold text-base rounded-lg
-    border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
+    border ${inputBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
     disabled:opacity-30 disabled:cursor-not-allowed transition-colors
     [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
     [&::-webkit-inner-spin-button]:appearance-none`
@@ -243,7 +273,6 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
               max="99"
               value={home}
               onChange={(e) => setHome(e.target.value)}
-              onBlur={handleSave}
               disabled={!isOpen}
               className={inputClasses}
             />
@@ -254,7 +283,6 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
               max="99"
               value={away}
               onChange={(e) => setAway(e.target.value)}
-              onBlur={handleSave}
               disabled={!isOpen}
               className={inputClasses}
             />
@@ -272,6 +300,7 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
 
       {/* Linha de status */}
       <div className="text-center text-[11px] min-h-[16px]">
+        {/* Jogo finalizado: mostra resultado e pontos */}
         {isFinished && prediction && (
           <div className="flex items-center justify-center gap-1.5 flex-wrap">
             <span className="text-gray-400">
@@ -295,13 +324,11 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
           <span className="text-gray-600 italic">Sem palpite</span>
         )}
 
+        {/* Jogo aberto */}
         {!isFinished && isOpen && (
           <>
             {saveStatus === 'saving' && (
               <span className="text-yellow-400">Salvando...</span>
-            )}
-            {saveStatus === 'saved' && (
-              <span className="text-green-400">✓ Salvo</span>
             )}
             {saveStatus === 'blocked' && (
               <span className="text-red-400">🔒 Palpite bloqueado — partida já iniciada</span>
@@ -310,9 +337,25 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
               <span className="text-red-400">Erro ao salvar</span>
             )}
             {!saveStatus && (
-              <span className={countdownColor(remaining)}>
-                ⏱ {formatCountdown(remaining)}
-              </span>
+              <>
+                {matchesPrediction && prediction.updated_at ? (
+                  // Palpite salvo e os inputs batem → mostra timestamp persistente + countdown
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400">
+                      <span className="text-green-400">✓</span> Palpite salvo {formatSavedTime(prediction.updated_at)}
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className={countdownColor(remaining)}>
+                      ⏱ {formatCountdown(remaining)}
+                    </span>
+                  </div>
+                ) : (
+                  // Sem palpite ou valor digitado ainda não corresponde ao salvo
+                  <span className={countdownColor(remaining)}>
+                    ⏱ {formatCountdown(remaining)}
+                  </span>
+                )}
+              </>
             )}
           </>
         )}
@@ -581,6 +624,7 @@ export default function Groups({ userId }) {
   }, [userId])
 
   // Callback quando um palpite é salvo — atualiza o state local
+  // Incluímos updated_at pra o timestamp do "Palpite salvo" aparecer imediatamente
   const handlePredictionSaved = (matchId, homeScore, awayScore) => {
     setPredictions((prev) => ({
       ...prev,
@@ -590,6 +634,7 @@ export default function Groups({ userId }) {
         user_id: userId,
         home_score: homeScore,
         away_score: awayScore,
+        updated_at: new Date().toISOString(),
       },
     }))
   }
