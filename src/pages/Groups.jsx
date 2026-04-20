@@ -87,63 +87,61 @@ function TeamFlag({ code, size = 22 }) {
 function StatsTable({ teams }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
+  // Template de colunas: rank(32) | nome(min 120, flex) | 8 stats (40 cada)
+  // minWidth 472 garante scroll horizontal em telas estreitas
+  const gridStyle = {
+    gridTemplateColumns: '32px minmax(120px, 1fr) repeat(8, 40px)',
+    minWidth: 472,
+  }
+
   return (
-    <div className="overflow-x-auto flex-1 p-2 flex items-center">
-      <table className="w-full" style={{ minWidth: 380 }}>
-        <thead>
-          <tr className="border-b border-gray-700/50">
-            <th
-              colSpan={2}
-              className="text-left text-xs text-gray-400 uppercase tracking-wider font-semibold pt-5 pb-7 pl-3"
+    <div className="flex-1 flex flex-col overflow-x-auto py-2">
+      {/* Header — filho direto do flex, altura natural */}
+      <div
+        className="grid items-center border-b border-gray-700/50 py-3 px-3"
+        style={gridStyle}
+      >
+        <span className="col-span-2 text-left text-xs text-gray-400 uppercase tracking-wider font-semibold">
+          Classificação
+        </span>
+        {statCols.map((col) => (
+          <span
+            key={col}
+            className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold"
+          >
+            {col}
+          </span>
+        ))}
+      </div>
+
+      {/* Linhas — filhas diretas do flex, cada uma com flex-1 divide o resto da altura */}
+      {teams.map((team, idx) => (
+        <div
+          key={team.id}
+          className={`grid items-center flex-1 py-3 px-3
+            border-b border-gray-800/60 last:border-0
+            border-l-2 ${idx < 2 ? 'border-l-green-500/70' : 'border-l-transparent'}`}
+          style={gridStyle}
+        >
+          <span className="text-gray-400 text-sm text-center">{idx + 1}</span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <TeamFlag code={team.code} size={26} />
+            <span className="text-white text-base font-medium truncate">
+              {team.name}
+            </span>
+          </div>
+          {statCols.map((col, i) => (
+            <span
+              key={col}
+              className={`text-center font-mono text-base ${
+                i === 0 ? 'text-white font-bold' : 'text-gray-400'
+              }`}
             >
-              Classificação
-            </th>
-            {statCols.map((col) => (
-              <th
-                key={col}
-                className="text-center text-xs text-gray-400 uppercase tracking-wider font-semibold pt-5 pb-7"
-                style={{ width: 40 }}
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {teams.map((team, idx) => (
-            <tr
-              key={team.id}
-              className={`border-b border-gray-800/60 last:border-0
-                ${idx < 2
-                  ? 'border-l-2 border-l-green-500/70'
-                  : 'border-l-2 border-l-transparent'
-                }`}
-            >
-              <td className="py-5 pl-3 text-gray-400 text-sm text-center w-8">
-                {idx + 1}
-              </td>
-              <td className="py-5">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <TeamFlag code={team.code} size={26} />
-                  <span className="text-white text-base font-medium truncate">
-                    {team.name}
-                  </span>
-                </div>
-              </td>
-              {statCols.map((col, i) => (
-                <td
-                  key={col}
-                  className={`py-5 text-center font-mono text-base
-                    ${i === 0 ? 'text-white font-bold' : 'text-gray-400'}`}
-                  style={{ width: 40 }}
-                >
-                  0
-                </td>
-              ))}
-            </tr>
+              0
+            </span>
           ))}
-        </tbody>
-      </table>
+        </div>
+      ))}
     </div>
   )
 }
@@ -205,7 +203,7 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
     [&::-webkit-inner-spin-button]:appearance-none`
 
   return (
-    <div className="py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
+    <div className="flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
       {/* Estádio + Data */}
       <div className="text-center space-y-0.5">
         <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
@@ -357,10 +355,10 @@ function RoundTabs({ matches, predictions, now, userId, onSaved }) {
           ))}
       </div>
 
-      {/* Jogos da rodada */}
-      <div className="flex-1 px-3">
+      {/* Jogos da rodada — flex-col faz os MatchCards dividirem o espaço vertical */}
+      <div className="flex-1 px-3 flex flex-col">
         {roundMatches.length === 0 ? (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex-1 flex items-center justify-center">
             <p className="text-gray-600 text-xs uppercase tracking-wider">
               Sem jogos nesta rodada
             </p>
