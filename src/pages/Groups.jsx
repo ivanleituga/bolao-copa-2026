@@ -47,6 +47,21 @@ function formatSavedTime(iso) {
   return `${dd}/${mm} • ${hh}:${min}`
 }
 
+/**
+ * Sanitiza o input de placar: aceita só os dígitos iniciais, máximo 2.
+ * - "3"      → "3"
+ * - "32"     → "32"
+ * - "3.2"    → "3"   (para no primeiro caractere não-dígito)
+ * - "-1"     → ""    (não começa com dígito)
+ * - "999"    → "99"  (limitado a 2 dígitos)
+ * - "abc"    → ""
+ */
+function sanitizeScore(value) {
+  if (!value) return ''
+  const match = String(value).match(/^\d+/)
+  return match ? match[0].slice(0, 2) : ''
+}
+
 /** Atribui número da rodada (1, 2 ou 3) dentro de cada grupo */
 function assignRoundNumbers(matches) {
   const byGroup = {}
@@ -161,8 +176,12 @@ function StatsTable({ teams }) {
    ═══════════════════════════════════════════════════ */
 
 function MatchCard({ match, prediction, now, userId, onSaved }) {
-  const [home, setHome] = useState(prediction?.home_score ?? '')
-  const [away, setAway] = useState(prediction?.away_score ?? '')
+  const [home, setHome] = useState(
+    prediction?.home_score != null ? String(prediction.home_score) : ''
+  )
+  const [away, setAway] = useState(
+    prediction?.away_score != null ? String(prediction.away_score) : ''
+  )
   const [saveStatus, setSaveStatus] = useState(null)
 
   // Ref pra sempre ter a versão mais recente de onSaved sem precisar
@@ -176,9 +195,11 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
   const isFinished = match.status === 'finished' && match.home_score != null
 
   // Estado derivado: os inputs atuais batem com o palpite salvo?
+  // Como o sanitizeScore garante que home/away são sempre "" ou "0"–"99",
+  // só precisamos checar se ambos têm algum valor numérico.
   const h = parseInt(home)
   const a = parseInt(away)
-  const hasValidInputs = !isNaN(h) && !isNaN(a) && h >= 0 && a >= 0
+  const hasValidInputs = !isNaN(h) && !isNaN(a)
   const matchesPrediction = hasValidInputs && prediction
     && prediction.home_score === h && prediction.away_score === a
 
@@ -228,9 +249,7 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
 
   const inputClasses = `w-9 h-9 text-center bg-gray-700/80 text-white font-bold text-base rounded-lg
     border ${inputBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
-    disabled:opacity-30 disabled:cursor-not-allowed transition-colors
-    [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
-    [&::-webkit-inner-spin-button]:appearance-none`
+    disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
   return (
     <div className="flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
@@ -268,21 +287,23 @@ function MatchCard({ match, prediction, now, userId, onSaved }) {
         ) : (
           <div className="flex items-center gap-1.5 px-1">
             <input
-              type="number"
-              min="0"
-              max="99"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={2}
               value={home}
-              onChange={(e) => setHome(e.target.value)}
+              onChange={(e) => setHome(sanitizeScore(e.target.value))}
               disabled={!isOpen}
               className={inputClasses}
             />
             <span className="text-gray-500 text-sm font-bold">×</span>
             <input
-              type="number"
-              min="0"
-              max="99"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={2}
               value={away}
-              onChange={(e) => setAway(e.target.value)}
+              onChange={(e) => setAway(sanitizeScore(e.target.value))}
               disabled={!isOpen}
               className={inputClasses}
             />
