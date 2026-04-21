@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getFlagUrl } from '../lib/flags'
 import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
+import { calculateStandings } from '../lib/standings'
 import SpecialPredictions from './SpecialPredictions'
 
 /* ═══════════════════════════════════════════════════
@@ -109,7 +110,13 @@ function TeamFlag({ code, size = 22 }) {
    StatsTable
    ═══════════════════════════════════════════════════ */
 
-function StatsTable({ teams }) {
+/** Formata saldo de gols com sinal: +3, -2, 0 */
+function formatGoalDiff(sg) {
+  if (sg > 0) return `+${sg}`
+  return String(sg)
+}
+
+function StatsTable({ standings }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
   // Template de colunas: rank(32) | nome(min 120, flex) | 8 stats (40 cada)
@@ -140,33 +147,47 @@ function StatsTable({ teams }) {
       </div>
 
       {/* Linhas — filhas diretas do flex, cada uma com flex-1 divide o resto da altura */}
-      {teams.map((team, idx) => (
-        <div
-          key={team.id}
-          className={`grid items-center flex-1 py-3 px-3
-            border-b border-gray-800/60 last:border-0
-            border-l-2 ${idx < 2 ? 'border-l-green-500/70' : 'border-l-transparent'}`}
-          style={gridStyle}
-        >
-          <span className="text-gray-400 text-sm text-center">{idx + 1}</span>
-          <div className="flex items-center gap-2.5 min-w-0">
-            <TeamFlag code={team.code} size={26} />
-            <span className="text-white text-base font-medium truncate">
-              {team.name}
-            </span>
+      {standings.map((row, idx) => {
+        // Ordem das stats precisa bater com statCols: P, J, V, E, D, GP, GC, SG
+        const values = [
+          row.points,
+          row.played,
+          row.won,
+          row.drawn,
+          row.lost,
+          row.goalsFor,
+          row.goalsAgainst,
+          formatGoalDiff(row.goalDiff),
+        ]
+
+        return (
+          <div
+            key={row.team.id}
+            className={`grid items-center flex-1 py-3 px-3
+              border-b border-gray-800/60 last:border-0
+              border-l-2 ${idx < 2 ? 'border-l-green-500/70' : 'border-l-transparent'}`}
+            style={gridStyle}
+          >
+            <span className="text-gray-400 text-sm text-center">{idx + 1}</span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <TeamFlag code={row.team.code} size={26} />
+              <span className="text-white text-base font-medium truncate">
+                {row.team.name}
+              </span>
+            </div>
+            {values.map((val, i) => (
+              <span
+                key={i}
+                className={`text-center font-mono text-base ${
+                  i === 0 ? 'text-white font-bold' : 'text-gray-400'
+                }`}
+              >
+                {val}
+              </span>
+            ))}
           </div>
-          {statCols.map((col, i) => (
-            <span
-              key={col}
-              className={`text-center font-mono text-base ${
-                i === 0 ? 'text-white font-bold' : 'text-gray-400'
-              }`}
-            >
-              0
-            </span>
-          ))}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -451,6 +472,10 @@ function RoundTabs({ matches, predictions, now, userId, onSaved }) {
 function GroupCard({ letter, teams, matches, predictions, now, userId, onSaved }) {
   const [open, setOpen] = useState(false)
 
+  // Calcula a classificação do grupo em cima dos matches finalizados.
+  // Recalcula a cada render, mas o custo é desprezível (4 times, 6 jogos).
+  const standings = calculateStandings(teams, matches)
+
   return (
     <div className="bg-gray-800/80 rounded-xl overflow-hidden border border-gray-700/40">
       <button
@@ -487,7 +512,7 @@ function GroupCard({ letter, teams, matches, predictions, now, userId, onSaved }
           <div className="flex flex-col lg:flex-row lg:items-stretch gap-3">
             {/* Tabela de classificação */}
             <div className="bg-gray-900/60 rounded-lg overflow-hidden lg:flex-1 flex flex-col">
-              <StatsTable teams={teams} />
+              <StatsTable standings={standings} />
             </div>
 
             {/* Rodadas com jogos e palpites */}
