@@ -3,12 +3,16 @@ import { supabase } from '../lib/supabase'
 import { getRoundLabel } from '../lib/scoring'
 import { PLAYERS } from '../lib/players'
 import { TeamFlag } from '../components/TeamFlag'
+import AdminKnockoutCard from '../components/AdminKnockoutCard'
 
 /* ═══════════════════════════════════════════════════
    Helpers
    ═══════════════════════════════════════════════════ */
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+// Ordem oficial das rounds de mata-mata (pra agrupar visualmente os cards)
+const KNOCKOUT_ROUND_ORDER = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'third_place', 'final']
 
 function formatMatchDate(iso) {
   const d = new Date(iso)
@@ -17,6 +21,18 @@ function formatMatchDate(iso) {
   const hh = String(d.getHours()).padStart(2, '0')
   const min = String(d.getMinutes()).padStart(2, '0')
   return `${dd}/${mm} • ${DIAS[d.getDay()]} • ${hh}:${min}`
+}
+
+/** Agrupa matches por round, na ordem oficial das fases */
+function groupByRound(matches) {
+  const groups = {}
+  matches.forEach((m) => {
+    if (!groups[m.round]) groups[m.round] = []
+    groups[m.round].push(m)
+  })
+  return KNOCKOUT_ROUND_ORDER
+    .filter((r) => groups[r])
+    .map((r) => ({ round: r, matches: groups[r] }))
 }
 
 /* ═══════════════════════════════════════════════════
@@ -441,6 +457,7 @@ export default function Admin() {
   const [specialResponses, setSpecialResponses] = useState({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
+  const [now, setNow] = useState(() => Date.now())
 
   const fetchSpecial = async () => {
     const { data: questions } = await supabase
@@ -504,6 +521,14 @@ export default function Admin() {
     fetchAll()
   }, [])
 
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => clearInterval(id)
+  }, [])
+
   const handleResult = (matchId, homeScore, awayScore) => {
     setMatches((prev) =>
       prev.map((m) =>
@@ -524,6 +549,27 @@ export default function Admin() {
     )
   }
 
+  // Callback quando admin define os times de um match de mata-mata.
+  // Atualiza state local pra refletir os times novos (o card some da aba
+  // "Definir confrontos" porque deixa de ser placeholder).
+  const handleKnockoutSave = (matchId, homeId, awayId) => {
+    const home = teams.find((t) => t.id === homeId)
+    const away = teams.find((t) => t.id === awayId)
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.id === matchId
+          ? {
+              ...m,
+              home_team_id: homeId,
+              away_team_id: awayId,
+              home_team: home ? { id: home.id, name: home.name, code: home.code } : null,
+              away_team: away ? { id: away.id, name: away.name, code: away.code } : null,
+            }
+          : m
+      )
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -535,11 +581,24 @@ export default function Admin() {
     )
   }
 
-  const pending = matches.filter((m) => m.status !== 'finished')
+  // Pending exclui placeholders (matches sem times definidos) — eles só aparecem
+  // na aba "Definir confrontos", nunca em "Aguardando resultado"
+  const pending = matches.filter(
+    (m) => m.status !== 'finished' && m.home_team != null && m.away_team != null
+  )
   const finished = matches
     .filter((m) => m.status === 'finished')
     .sort((a, b) => new Date(b.kickoff_time) - new Date(a.kickoff_time))
-  const displayMatches = filter === 'pending' ? pending : finished
+  const knockout = matches.filter(
+    (m) => m.home_team == null || m.away_team == null
+  )
+
+  const displayMatches =
+    filter === 'pending' ? pending :
+    filter === 'finished' ? finished :
+    []
+
+  const groupedKnockout = groupByRound(knockout)
 
   return (
     <div>
@@ -574,19 +633,19 @@ export default function Admin() {
         </>
       )}
 
-      {/* Resultados dos Jogos */}
+      {/* Jogos */}
       <div className="flex items-center gap-2 mb-3">
         <span className="text-sm">⚽</span>
         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-          Resultados dos Jogos
+          Jogos
         </h3>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
         <button
           onClick={() => setFilter('pending')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors
+          className={`whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-colors
             ${filter === 'pending'
               ? 'bg-yellow-600 text-white'
               : 'bg-gray-800 text-gray-400 hover:text-white'
@@ -597,7 +656,7 @@ export default function Admin() {
         </button>
         <button
           onClick={() => setFilter('finished')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors
+          className={`whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-colors
             ${filter === 'finished'
               ? 'bg-green-600 text-white'
               : 'bg-gray-800 text-gray-400 hover:text-white'
@@ -606,28 +665,81 @@ export default function Admin() {
           Finalizados
           <span className="ml-1.5 text-xs opacity-70">({finished.length})</span>
         </button>
+        <button
+          onClick={() => setFilter('knockout')}
+          className={`whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-colors
+            ${filter === 'knockout'
+              ? 'bg-yellow-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white'
+            }`}
+        >
+          Definir confrontos
+          <span className="ml-1.5 text-xs opacity-70">({knockout.length})</span>
+        </button>
       </div>
 
-      {/* Lista de jogos */}
-      {displayMatches.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-gray-500 text-sm">
-            {filter === 'pending'
-              ? 'Todos os jogos já foram finalizados.'
-              : 'Nenhum jogo finalizado ainda.'}
-          </p>
-        </div>
+      {/* Conteúdo conforme filtro ativo */}
+      {filter === 'knockout' ? (
+        // Nova aba: definir confrontos de mata-mata
+        knockout.length === 0 ? (
+          <div className="flex items-center justify-center py-16">
+            <p className="text-gray-500 text-sm text-center">
+              Todos os confrontos de mata-mata já foram definidos.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+              <p className="text-gray-400 text-xs leading-relaxed">
+                ℹ️ Após salvar um confronto, ele sai desta aba e vai pra "Aguardando resultado".
+                Pra editar depois, use o Supabase Studio.
+              </p>
+            </div>
+            <div className="space-y-6">
+              {groupedKnockout.map((group) => (
+                <div key={group.round}>
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                    {getRoundLabel(group.round)}
+                    <span className="ml-1.5 text-gray-600">({group.matches.length})</span>
+                  </h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {group.matches.map((m) => (
+                      <AdminKnockoutCard
+                        key={m.id}
+                        match={m}
+                        teams={teams}
+                        now={now}
+                        onSave={handleKnockoutSave}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {displayMatches.map((match) => (
-            <AdminMatchCard
-              key={match.id}
-              match={match}
-              onResult={handleResult}
-              onReset={handleReset}
-            />
-          ))}
-        </div>
+        // Abas originais: aguardando / finalizados
+        displayMatches.length === 0 ? (
+          <div className="flex items-center justify-center py-16">
+            <p className="text-gray-500 text-sm">
+              {filter === 'pending'
+                ? 'Todos os jogos já foram finalizados.'
+                : 'Nenhum jogo finalizado ainda.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {displayMatches.map((match) => (
+              <AdminMatchCard
+                key={match.id}
+                match={match}
+                onResult={handleResult}
+                onReset={handleReset}
+              />
+            ))}
+          </div>
+        )
       )}
     </div>
   )

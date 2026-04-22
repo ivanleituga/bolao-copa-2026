@@ -29,6 +29,50 @@ function sanitizeScore(value) {
 }
 
 /* ═══════════════════════════════════════════════════
+   TeamSide — renderiza um lado do confronto (casa ou visitante).
+   Se o time real estiver definido, mostra bandeira + nome.
+   Se estiver como placeholder (ex: "1A", "3ABCDF", "W73"), mostra
+   uma caixinha pontilhada no lugar da bandeira e o texto em cinza.
+   ═══════════════════════════════════════════════════ */
+
+function TeamSide({ team, placeholder, align }) {
+  // Elemento da "bandeira": real ou caixinha pontilhada (mesma dimensão do TeamFlag size=22)
+  const flagEl = team ? (
+    <TeamFlag code={team.code} size={22} />
+  ) : (
+    <div
+      style={{ width: 22, height: 15 }}
+      className="rounded-sm border border-dashed border-gray-600 bg-gray-800/40 flex-shrink-0"
+    />
+  )
+
+  // Nome ou placeholder
+  const label = team ? team.name : placeholder
+  const labelColor = team ? 'text-white' : 'text-gray-500 italic'
+
+  // Casa fica à direita → nome ANTES da bandeira (texto alinhado à direita)
+  // Visitante fica à esquerda → bandeira ANTES do nome
+  if (align === 'right') {
+    return (
+      <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+        <span className={`${labelColor} text-[13px] font-medium truncate text-right`}>
+          {label}
+        </span>
+        {flagEl}
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+      {flagEl}
+      <span className={`${labelColor} text-[13px] font-medium truncate`}>
+        {label}
+      </span>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════
    MatchCard — card de um jogo com input de palpite
    ═══════════════════════════════════════════════════ */
 
@@ -46,9 +90,16 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
   const onSavedRef = useRef(onSaved)
   useEffect(() => { onSavedRef.current = onSaved })
 
+  // Detecta placeholder: pelo menos um dos times ainda não foi definido
+  const hasHomeTeam = match.home_team != null
+  const hasAwayTeam = match.away_team != null
+  const isPlaceholderMatch = !hasHomeTeam || !hasAwayTeam
+
   const deadline = new Date(match.kickoff_time).getTime() - 5 * 60 * 1000
   const remaining = deadline - now
-  const isOpen = remaining > 0 && match.status !== 'finished'
+  // isOpen fica false quando placeholder — isso automaticamente desabilita
+  // inputs, auto-save e tudo que depende dessa flag
+  const isOpen = remaining > 0 && match.status !== 'finished' && !isPlaceholderMatch
   const isFinished = match.status === 'finished' && match.home_score != null
 
   // Estado derivado: os inputs atuais batem com o palpite salvo?
@@ -107,9 +158,11 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
     <div className="flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
       {/* Estádio + Data */}
       <div className="text-center space-y-0.5">
-        <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
-          {match.venue}
-        </p>
+        {match.venue && (
+          <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
+            {match.venue}
+          </p>
+        )}
         <p className="text-gray-400 text-xs font-medium">
           {formatMatchDate(match.kickoff_time)}
         </p>
@@ -118,12 +171,11 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
       {/* Seleções + Placar/Palpite */}
       <div className="flex items-center justify-center gap-2">
         {/* Casa */}
-        <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-          <span className="text-white text-[13px] font-medium truncate text-right">
-            {match.home_team.name}
-          </span>
-          <TeamFlag code={match.home_team.code} size={22} />
-        </div>
+        <TeamSide
+          team={match.home_team}
+          placeholder={match.home_placeholder}
+          align="right"
+        />
 
         {/* Área de placar */}
         {isFinished ? (
@@ -163,18 +215,24 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
         )}
 
         {/* Visitante */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <TeamFlag code={match.away_team.code} size={22} />
-          <span className="text-white text-[13px] font-medium truncate">
-            {match.away_team.name}
-          </span>
-        </div>
+        <TeamSide
+          team={match.away_team}
+          placeholder={match.away_placeholder}
+          align="left"
+        />
       </div>
 
       {/* Linha de status */}
       <div className="text-center text-[11px] min-h-[16px]">
+        {/* Placeholder: aguardando definição do confronto */}
+        {isPlaceholderMatch && (
+          <span className="text-gray-500 italic">
+            ⏳ Aguardando definição do confronto
+          </span>
+        )}
+
         {/* Jogo finalizado: mostra resultado e pontos */}
-        {isFinished && prediction && (
+        {!isPlaceholderMatch && isFinished && prediction && (
           <div className="flex items-center justify-center gap-1.5 flex-wrap">
             <span className="text-gray-400">
               Seu palpite: {prediction.home_score} × {prediction.away_score}
@@ -193,12 +251,12 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
             )}
           </div>
         )}
-        {isFinished && !prediction && (
+        {!isPlaceholderMatch && isFinished && !prediction && (
           <span className="text-gray-600 italic">Sem palpite</span>
         )}
 
         {/* Jogo aberto */}
-        {!isFinished && isOpen && (
+        {!isPlaceholderMatch && !isFinished && isOpen && (
           <>
             {saveStatus === 'saving' && (
               <span className="text-yellow-400">Salvando...</span>
@@ -231,7 +289,8 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
           </>
         )}
 
-        {!isFinished && !isOpen && (
+        {/* Jogo encerrado (deadline passou mas não foi finalizado ainda) */}
+        {!isPlaceholderMatch && !isFinished && !isOpen && (
           <span className="text-gray-500">🔒 Encerrado</span>
         )}
       </div>
