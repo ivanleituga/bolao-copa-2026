@@ -1,67 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { getFlagUrl } from '../lib/flags'
-import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
 import { calculateStandings } from '../lib/standings'
+import { useMatchesAndPredictions } from '../hooks/useMatchesAndPredictions'
+import MatchCard, { TeamFlag } from '../components/MatchCard'
 import SpecialPredictions from './SpecialPredictions'
 
 /* ═══════════════════════════════════════════════════
-   Helpers
+   Helpers específicos da tela de grupos
    ═══════════════════════════════════════════════════ */
-
-const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
-function formatMatchDate(iso) {
-  const d = new Date(iso)
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const hh = String(d.getHours()).padStart(2, '0')
-  const min = String(d.getMinutes()).padStart(2, '0')
-  return `${dd}/${mm} • ${DIAS[d.getDay()]} • ${hh}:${min}`
-}
-
-function formatCountdown(ms) {
-  if (ms <= 0) return null
-  const d = Math.floor(ms / 86400000)
-  const h = Math.floor((ms % 86400000) / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  const s = Math.floor((ms % 60000) / 1000)
-  if (d > 0) return `${d}d ${h}h`
-  if (h > 0) return `${h}h ${m}min`
-  if (m >= 10) return `${m}min`
-  return `${m}min ${s}s`
-}
-
-function countdownColor(ms) {
-  if (ms <= 600000) return 'text-red-400'
-  if (ms <= 3600000) return 'text-yellow-400'
-  return 'text-gray-400'
-}
-
-/** Formata o timestamp de quando o palpite foi salvo. Ex: "10/06 • 14:35" */
-function formatSavedTime(iso) {
-  const d = new Date(iso)
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const hh = String(d.getHours()).padStart(2, '0')
-  const min = String(d.getMinutes()).padStart(2, '0')
-  return `${dd}/${mm} • ${hh}:${min}`
-}
-
-/**
- * Sanitiza o input de placar: aceita só os dígitos iniciais, máximo 2.
- * - "3"      → "3"
- * - "32"     → "32"
- * - "3.2"    → "3"   (para no primeiro caractere não-dígito)
- * - "-1"     → ""    (não começa com dígito)
- * - "999"    → "99"  (limitado a 2 dígitos)
- * - "abc"    → ""
- */
-function sanitizeScore(value) {
-  if (!value) return ''
-  const match = String(value).match(/^\d+/)
-  return match ? match[0].slice(0, 2) : ''
-}
 
 /** Atribui número da rodada (1, 2 ou 3) dentro de cada grupo */
 function assignRoundNumbers(matches) {
@@ -81,46 +27,19 @@ function assignRoundNumbers(matches) {
   return matches
 }
 
-/* ═══════════════════════════════════════════════════
-   TeamFlag
-   ═══════════════════════════════════════════════════ */
-
-function TeamFlag({ code, size = 22 }) {
-  const url = getFlagUrl(code, 80)
-  if (!url) {
-    return (
-      <span
-        className="inline-block rounded bg-gray-600"
-        style={{ width: size, height: size * 0.67 }}
-      />
-    )
-  }
-  return (
-    <img
-      src={url}
-      alt={code}
-      className="inline-block rounded-sm object-cover"
-      style={{ width: size, height: size * 0.67 }}
-      loading="lazy"
-    />
-  )
-}
-
-/* ═══════════════════════════════════════════════════
-   StatsTable
-   ═══════════════════════════════════════════════════ */
-
 /** Formata saldo de gols com sinal: +3, -2, 0 */
 function formatGoalDiff(sg) {
   if (sg > 0) return `+${sg}`
   return String(sg)
 }
 
+/* ═══════════════════════════════════════════════════
+   StatsTable
+   ═══════════════════════════════════════════════════ */
+
 function StatsTable({ standings }) {
   const statCols = ['P', 'J', 'V', 'E', 'D', 'GP', 'GC', 'SG']
 
-  // Template de colunas: rank(32) | nome(min 120, flex) | 8 stats (40 cada)
-  // minWidth 472 garante scroll horizontal em telas estreitas
   const gridStyle = {
     gridTemplateColumns: '32px minmax(120px, 1fr) repeat(8, 40px)',
     minWidth: 472,
@@ -128,7 +47,7 @@ function StatsTable({ standings }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-x-auto py-2">
-      {/* Header — filho direto do flex, altura natural */}
+      {/* Header */}
       <div
         className="grid items-center border-b border-gray-700/50 py-3 px-3"
         style={gridStyle}
@@ -146,9 +65,8 @@ function StatsTable({ standings }) {
         ))}
       </div>
 
-      {/* Linhas — filhas diretas do flex, cada uma com flex-1 divide o resto da altura */}
+      {/* Linhas */}
       {standings.map((row, idx) => {
-        // Ordem das stats precisa bater com statCols: P, J, V, E, D, GP, GC, SG
         const values = [
           row.points,
           row.played,
@@ -193,224 +111,6 @@ function StatsTable({ standings }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   MatchCard — card individual de cada jogo + palpite
-   ═══════════════════════════════════════════════════ */
-
-function MatchCard({ match, prediction, now, userId, onSaved }) {
-  const [home, setHome] = useState(
-    prediction?.home_score != null ? String(prediction.home_score) : ''
-  )
-  const [away, setAway] = useState(
-    prediction?.away_score != null ? String(prediction.away_score) : ''
-  )
-  const [saveStatus, setSaveStatus] = useState(null)
-
-  // Ref pra sempre ter a versão mais recente de onSaved sem precisar
-  // incluí-la nas deps do useEffect (evita re-runs desnecessários do debounce)
-  const onSavedRef = useRef(onSaved)
-  useEffect(() => { onSavedRef.current = onSaved })
-
-  const deadline = new Date(match.kickoff_time).getTime() - 5 * 60 * 1000
-  const remaining = deadline - now
-  const isOpen = remaining > 0 && match.status !== 'finished'
-  const isFinished = match.status === 'finished' && match.home_score != null
-
-  // Estado derivado: os inputs atuais batem com o palpite salvo?
-  // Como o sanitizeScore garante que home/away são sempre "" ou "0"–"99",
-  // só precisamos checar se ambos têm algum valor numérico.
-  const h = parseInt(home)
-  const a = parseInt(away)
-  const hasValidInputs = !isNaN(h) && !isNaN(a)
-  const matchesPrediction = hasValidInputs && prediction
-    && prediction.home_score === h && prediction.away_score === a
-
-  // Auto-save com debounce de 800ms após a última alteração dos inputs
-  // Substitui o onBlur antigo, que era pouco confiável em mobile
-  useEffect(() => {
-    if (!isOpen) return
-    if (!hasValidInputs) return
-    if (matchesPrediction) return  // já salvo, nada a fazer
-
-    const timer = setTimeout(async () => {
-      setSaveStatus('saving')
-
-      const { error } = await supabase.from('predictions').upsert(
-        {
-          user_id: userId,
-          match_id: match.id,
-          home_score: h,
-          away_score: a,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,match_id' }
-      )
-
-      if (error) {
-        console.error('Erro ao salvar palpite:', error)
-        if (error.code === '42501' || error.message?.includes('row-level security')) {
-          setSaveStatus('blocked')
-        } else {
-          setSaveStatus('error')
-        }
-        setTimeout(() => setSaveStatus(null), 4000)
-      } else {
-        // Limpa o status — a UI volta a refletir o prediction atualizado
-        // (borda verde + timestamp persistente)
-        setSaveStatus(null)
-        onSavedRef.current(match.id, h, a)
-      }
-    }, 800)
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [home, away, isOpen, matchesPrediction, userId, match.id])
-
-  // Borda verde persistente quando o valor nos inputs bate com o palpite salvo
-  const inputBorder = matchesPrediction ? 'border-green-500/60' : 'border-gray-600'
-
-  const inputClasses = `w-9 h-9 text-center bg-gray-700/80 text-white font-bold text-base rounded-lg
-    border ${inputBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
-    disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
-
-  return (
-    <div className="flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
-      {/* Estádio + Data */}
-      <div className="text-center space-y-0.5">
-        <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
-          {match.venue}
-        </p>
-        <p className="text-gray-400 text-xs font-medium">
-          {formatMatchDate(match.kickoff_time)}
-        </p>
-      </div>
-
-      {/* Seleções + Placar/Palpite */}
-      <div className="flex items-center justify-center gap-2">
-        {/* Casa */}
-        <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-          <span className="text-white text-[13px] font-medium truncate text-right">
-            {match.home_team.name}
-          </span>
-          <TeamFlag code={match.home_team.code} size={22} />
-        </div>
-
-        {/* Área de placar */}
-        {isFinished ? (
-          <div className="flex items-center gap-2 px-3 py-1 bg-gray-700/40 rounded-lg">
-            <span className="text-white font-bold text-lg w-5 text-center">
-              {match.home_score}
-            </span>
-            <span className="text-gray-500 text-xs">×</span>
-            <span className="text-white font-bold text-lg w-5 text-center">
-              {match.away_score}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 px-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              value={home}
-              onChange={(e) => setHome(sanitizeScore(e.target.value))}
-              disabled={!isOpen}
-              className={inputClasses}
-            />
-            <span className="text-gray-500 text-sm font-bold">×</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              value={away}
-              onChange={(e) => setAway(sanitizeScore(e.target.value))}
-              disabled={!isOpen}
-              className={inputClasses}
-            />
-          </div>
-        )}
-
-        {/* Visitante */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <TeamFlag code={match.away_team.code} size={22} />
-          <span className="text-white text-[13px] font-medium truncate">
-            {match.away_team.name}
-          </span>
-        </div>
-      </div>
-
-      {/* Linha de status */}
-      <div className="text-center text-[11px] min-h-[16px]">
-        {/* Jogo finalizado: mostra resultado e pontos */}
-        {isFinished && prediction && (
-          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-            <span className="text-gray-400">
-              Seu palpite: {prediction.home_score} × {prediction.away_score}
-            </span>
-            {prediction.points != null && (
-              <>
-                <span className="text-gray-600">·</span>
-                <span className={getPointsColor(prediction.points, MULTIPLIERS[match.round])}>
-                  {getPointsLabel(prediction.points, MULTIPLIERS[match.round], prediction.home_score, prediction.away_score)}
-                </span>
-                <span className="text-gray-600">·</span>
-                <span className={`font-bold ${getPointsColor(prediction.points, MULTIPLIERS[match.round])}`}>
-                  +{prediction.points} pts
-                </span>
-              </>
-            )}
-          </div>
-        )}
-        {isFinished && !prediction && (
-          <span className="text-gray-600 italic">Sem palpite</span>
-        )}
-
-        {/* Jogo aberto */}
-        {!isFinished && isOpen && (
-          <>
-            {saveStatus === 'saving' && (
-              <span className="text-yellow-400">Salvando...</span>
-            )}
-            {saveStatus === 'blocked' && (
-              <span className="text-red-400">🔒 Palpite bloqueado — partida já iniciada</span>
-            )}
-            {saveStatus === 'error' && (
-              <span className="text-red-400">Erro ao salvar</span>
-            )}
-            {!saveStatus && (
-              <>
-                {matchesPrediction && prediction.updated_at ? (
-                  // Palpite salvo e os inputs batem → mostra timestamp persistente + countdown
-                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400">
-                      <span className="text-green-400">✓</span> Palpite salvo {formatSavedTime(prediction.updated_at)}
-                    </span>
-                    <span className="text-gray-600">·</span>
-                    <span className={countdownColor(remaining)}>
-                      ⏱ {formatCountdown(remaining)}
-                    </span>
-                  </div>
-                ) : (
-                  // Sem palpite ou valor digitado ainda não corresponde ao salvo
-                  <span className={countdownColor(remaining)}>
-                    ⏱ {formatCountdown(remaining)}
-                  </span>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {!isFinished && !isOpen && (
-          <span className="text-gray-500">🔒 Encerrado</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ═══════════════════════════════════════════════════
    RoundTabs — abas 1ª / 2ª / 3ª Rodada com jogos
    ═══════════════════════════════════════════════════ */
 
@@ -421,26 +121,24 @@ function RoundTabs({ matches, predictions, now, userId, onSaved }) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tabs */}
       <div className="flex border-b border-gray-700/50">
         {[1, 2, 3].map((round) => (
-            <button
-              key={round}
-              onClick={() => setActiveRound(round)}
-              className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider
-                text-center transition-colors relative
-                ${
-                  activeRound === round
-                    ? 'text-green-400 border-b-2 border-green-400'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              {round}ª Rodada
-            </button>
-          ))}
+          <button
+            key={round}
+            onClick={() => setActiveRound(round)}
+            className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider
+              text-center transition-colors relative
+              ${
+                activeRound === round
+                  ? 'text-green-400 border-b-2 border-green-400'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+          >
+            {round}ª Rodada
+          </button>
+        ))}
       </div>
 
-      {/* Jogos da rodada — flex-col faz os MatchCards dividirem o espaço vertical */}
       <div className="flex-1 px-3 flex flex-col">
         {roundMatches.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
@@ -472,8 +170,6 @@ function RoundTabs({ matches, predictions, now, userId, onSaved }) {
 function GroupCard({ letter, teams, matches, predictions, now, userId, onSaved }) {
   const [open, setOpen] = useState(false)
 
-  // Calcula a classificação do grupo em cima dos matches finalizados.
-  // Recalcula a cada render, mas o custo é desprezível (4 times, 6 jogos).
   const standings = calculateStandings(teams, matches)
 
   return (
@@ -510,12 +206,10 @@ function GroupCard({ letter, teams, matches, predictions, now, userId, onSaved }
       {open && (
         <div className="px-3 pb-3">
           <div className="flex flex-col lg:flex-row lg:items-stretch gap-3">
-            {/* Tabela de classificação */}
             <div className="bg-gray-900/60 rounded-lg overflow-hidden lg:flex-1 flex flex-col">
               <StatsTable standings={standings} />
             </div>
 
-            {/* Rodadas com jogos e palpites */}
             <div className="bg-gray-900/60 rounded-lg overflow-hidden lg:w-[420px] min-h-[200px]">
               <RoundTabs
                 matches={matches}
@@ -533,15 +227,16 @@ function GroupCard({ letter, teams, matches, predictions, now, userId, onSaved }
 }
 
 /* ═══════════════════════════════════════════════════
-   Groups — componente principal (data fetching)
+   Groups — componente principal
    ═══════════════════════════════════════════════════ */
 
 export default function Groups({ userId }) {
   const [teams, setTeams] = useState({})
-  const [matches, setMatches] = useState({})
-  const [predictions, setPredictions] = useState({})
-  const [loading, setLoading] = useState(true)
+  const [teamsLoading, setTeamsLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
+
+  const { matches, predictions, loading, handlePredictionSaved } =
+    useMatchesAndPredictions(userId, ['group'])
 
   // Relógio global — atualiza a cada segundo
   useEffect(() => {
@@ -549,143 +244,34 @@ export default function Groups({ userId }) {
     return () => clearInterval(timer)
   }, [])
 
-  // Busca seleções, jogos e palpites do usuário
+  // Busca teams uma vez e agrupa por letra do grupo
   useEffect(() => {
-    const fetchAll = async () => {
-      // 1. Seleções
-      const { data: teamsData, error: teamsErr } = await supabase
+    const fetchTeams = async () => {
+      const { data, error } = await supabase
         .from('teams')
         .select('*')
         .order('group_letter')
         .order('name')
 
-      if (teamsErr) {
-        console.error('Erro ao buscar seleções:', teamsErr)
-        setLoading(false)
+      if (error) {
+        console.error('Erro ao buscar seleções:', error)
+        setTeamsLoading(false)
         return
       }
 
-      // Agrupa seleções por letra do grupo
-      const groupedTeams = {}
-      teamsData.forEach((t) => {
-        if (!groupedTeams[t.group_letter]) groupedTeams[t.group_letter] = []
-        groupedTeams[t.group_letter].push(t)
+      const grouped = {}
+      data.forEach((t) => {
+        if (!grouped[t.group_letter]) grouped[t.group_letter] = []
+        grouped[t.group_letter].push(t)
       })
-      setTeams(groupedTeams)
-
-      // 2. Jogos da fase de grupos (com join das seleções)
-      const { data: matchesData, error: matchesErr } = await supabase
-        .from('matches')
-        .select(
-          `*,
-          home_team:teams!home_team_id(id, name, code),
-          away_team:teams!away_team_id(id, name, code)`
-        )
-        .eq('round', 'group')
-        .order('kickoff_time')
-
-      if (matchesErr) {
-        console.error('Erro ao buscar jogos:', matchesErr)
-        setLoading(false)
-        return
-      }
-
-      // Atribui roundNumber (1, 2, 3) e agrupa por grupo
-      assignRoundNumbers(matchesData)
-      const groupedMatches = {}
-      matchesData.forEach((m) => {
-        if (!groupedMatches[m.group_letter]) groupedMatches[m.group_letter] = []
-        groupedMatches[m.group_letter].push(m)
-      })
-      setMatches(groupedMatches)
-
-      // 3. Palpites do usuário
-      const { data: predsData, error: predsErr } = await supabase
-        .from('predictions')
-        .select('*')
-        .eq('user_id', userId)
-
-      if (predsErr) {
-        console.error('Erro ao buscar palpites:', predsErr)
-      }
-
-      // Indexa por match_id pra acesso rápido
-      const predsMap = {}
-      if (predsData) {
-        predsData.forEach((p) => {
-          predsMap[p.match_id] = p
-        })
-      }
-      setPredictions(predsMap)
-
-      setLoading(false)
+      setTeams(grouped)
+      setTeamsLoading(false)
     }
 
-    fetchAll()
-  }, [userId])
+    fetchTeams()
+  }, [])
 
-  // Refetch de status dos jogos a cada 30 segundos
-  // Detecta quando o admin finaliza um jogo e atualiza a UI
-  useEffect(() => {
-    const refreshStatuses = async () => {
-      const { data } = await supabase
-        .from('matches')
-        .select('id, status, home_score, away_score')
-        .eq('round', 'group')
-
-      if (!data) return
-
-      const statusMap = {}
-      data.forEach((m) => { statusMap[m.id] = m })
-
-      setMatches((prev) => {
-        const updated = { ...prev }
-        Object.keys(updated).forEach((letter) => {
-          updated[letter] = updated[letter].map((m) => {
-            const fresh = statusMap[m.id]
-            if (fresh && (fresh.status !== m.status || fresh.home_score !== m.home_score)) {
-              return { ...m, status: fresh.status, home_score: fresh.home_score, away_score: fresh.away_score }
-            }
-            return m
-          })
-        })
-        return updated
-      })
-
-      // Também atualiza os pontos dos palpites quando jogos são finalizados
-      const { data: predsData } = await supabase
-        .from('predictions')
-        .select('*')
-        .eq('user_id', userId)
-
-      if (predsData) {
-        const predsMap = {}
-        predsData.forEach((p) => { predsMap[p.match_id] = p })
-        setPredictions(predsMap)
-      }
-    }
-
-    const interval = setInterval(refreshStatuses, 30000)
-    return () => clearInterval(interval)
-  }, [userId])
-
-  // Callback quando um palpite é salvo — atualiza o state local
-  // Incluímos updated_at pra o timestamp do "Palpite salvo" aparecer imediatamente
-  const handlePredictionSaved = (matchId, homeScore, awayScore) => {
-    setPredictions((prev) => ({
-      ...prev,
-      [matchId]: {
-        ...prev[matchId],
-        match_id: matchId,
-        user_id: userId,
-        home_score: homeScore,
-        away_score: awayScore,
-        updated_at: new Date().toISOString(),
-      },
-    }))
-  }
-
-  if (loading) {
+  if (loading || teamsLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="text-center">
@@ -696,11 +282,18 @@ export default function Groups({ userId }) {
     )
   }
 
+  // Atribui roundNumber e agrupa por letra
+  assignRoundNumbers(matches)
+  const matchesByGroup = {}
+  matches.forEach((m) => {
+    if (!matchesByGroup[m.group_letter]) matchesByGroup[m.group_letter] = []
+    matchesByGroup[m.group_letter].push(m)
+  })
+
   const groupLetters = Object.keys(teams).sort()
 
   return (
     <div>
-      {/* Palpites Especiais */}
       <SpecialPredictions userId={userId} now={now} />
 
       <div className="flex items-center gap-2 mb-4">
@@ -717,7 +310,7 @@ export default function Groups({ userId }) {
             key={letter}
             letter={letter}
             teams={teams[letter] || []}
-            matches={matches[letter] || []}
+            matches={matchesByGroup[letter] || []}
             predictions={predictions}
             now={now}
             userId={userId}
