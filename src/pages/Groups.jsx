@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { calculateStandings } from '../lib/standings'
 import { useMatchesAndPredictions } from '../hooks/useMatchesAndPredictions'
-import MatchCard, { TeamFlag } from '../components/MatchCard'
-import SpecialPredictions from './SpecialPredictions'
+import MatchCard from '../components/MatchCard'
+import { TeamFlag } from '../components/TeamFlag'
+import SpecialPredictions from '../components/SpecialPredictions'
 
 /* ═══════════════════════════════════════════════════
    Helpers específicos da tela de grupos

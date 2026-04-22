@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { getFlagUrl } from '../lib/flags'
 import { getRoundLabel } from '../lib/scoring'
 import { PLAYERS } from '../lib/players'
+import { TeamFlag } from '../components/TeamFlag'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -17,27 +17,6 @@ function formatMatchDate(iso) {
   const hh = String(d.getHours()).padStart(2, '0')
   const min = String(d.getMinutes()).padStart(2, '0')
   return `${dd}/${mm} • ${DIAS[d.getDay()]} • ${hh}:${min}`
-}
-
-function TeamFlag({ code, size = 24 }) {
-  const url = getFlagUrl(code, 80)
-  if (!url) {
-    return (
-      <span
-        className="inline-block rounded bg-gray-600"
-        style={{ width: size, height: size * 0.67 }}
-      />
-    )
-  }
-  return (
-    <img
-      src={url}
-      alt={code}
-      className="inline-block rounded-sm object-cover"
-      style={{ width: size, height: size * 0.67 }}
-      loading="lazy"
-    />
-  )
 }
 
 /* ═══════════════════════════════════════════════════

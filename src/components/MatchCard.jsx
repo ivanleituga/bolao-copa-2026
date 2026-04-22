@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { getFlagUrl } from '../lib/flags'
 import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
+import { TeamFlag } from './TeamFlag'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -53,31 +53,6 @@ function sanitizeScore(value) {
   if (!value) return ''
   const match = String(value).match(/^\d+/)
   return match ? match[0].slice(0, 2) : ''
-}
-
-/* ═══════════════════════════════════════════════════
-   TeamFlag
-   ═══════════════════════════════════════════════════ */
-
-export function TeamFlag({ code, size = 22 }) {
-  const url = getFlagUrl(code, 80)
-  if (!url) {
-    return (
-      <span
-        className="inline-block rounded bg-gray-600"
-        style={{ width: size, height: size * 0.67 }}
-      />
-    )
-  }
-  return (
-    <img
-      src={url}
-      alt={code}
-      className="inline-block rounded-sm object-cover"
-      style={{ width: size, height: size * 0.67 }}
-      loading="lazy"
-    />
-  )
 }
 
 /* ═══════════════════════════════════════════════════

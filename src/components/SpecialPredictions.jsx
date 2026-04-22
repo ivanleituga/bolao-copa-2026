@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { getFlagUrl } from '../lib/flags'
 import { PLAYERS } from '../lib/players'
+import { TeamFlag } from './TeamFlag'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -15,20 +15,6 @@ function formatCountdown(ms) {
   if (d > 0) return `${d}d ${h}h`
   if (h > 0) return `${h}h ${m}min`
   return `${m}min`
-}
-
-function TeamFlag({ code, size = 20 }) {
-  const url = getFlagUrl(code, 80)
-  if (!url) return null
-  return (
-    <img
-      src={url}
-      alt={code}
-      className="inline-block rounded-sm object-cover"
-      style={{ width: size, height: size * 0.67 }}
-      loading="lazy"
-    />
-  )
 }
 
 /* ═══════════════════════════════════════════════════
