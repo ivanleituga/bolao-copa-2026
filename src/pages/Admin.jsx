@@ -536,7 +536,9 @@ export default function Admin() {
   }
 
   const pending = matches.filter((m) => m.status !== 'finished')
-  const finished = matches.filter((m) => m.status === 'finished')
+  const finished = matches
+    .filter((m) => m.status === 'finished')
+    .sort((a, b) => new Date(b.kickoff_time) - new Date(a.kickoff_time))
   const displayMatches = filter === 'pending' ? pending : finished
 
   return (
