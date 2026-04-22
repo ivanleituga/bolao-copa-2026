@@ -1,21 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PLAYERS } from '../lib/players'
+import { formatCountdown, countdownColor, formatSavedTime } from '../lib/timeformat'
 import { TeamFlag } from './TeamFlag'
-
-/* ═══════════════════════════════════════════════════
-   Helpers
-   ═══════════════════════════════════════════════════ */
-
-function formatCountdown(ms) {
-  if (ms <= 0) return null
-  const d = Math.floor(ms / 86400000)
-  const h = Math.floor((ms % 86400000) / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  if (d > 0) return `${d}d ${h}h`
-  if (h > 0) return `${h}h ${m}min`
-  return `${m}min`
-}
 
 /* ═══════════════════════════════════════════════════
    QuestionCard — card individual pra cada pergunta
@@ -28,6 +15,10 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
   const remaining = new Date(question.deadline).getTime() - now
   const isOpen = remaining > 0
   const isTeam = question.answer_type === 'team'
+  const isPlayer = question.answer_type === 'player'
+
+  // Estado derivado: a resposta atual bate com o salvo?
+  const matchesPrediction = answer && prediction && prediction.answer === answer
 
   const handleSave = async (value) => {
     const val = value ?? answer
@@ -49,13 +40,17 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
 
     if (error) {
       console.error('Erro ao salvar resposta:', error)
-      setSaveStatus('error')
+      // RLS bloqueia quando o prazo passou no servidor
+      if (error.code === '42501' || error.message?.includes('row-level security')) {
+        setSaveStatus('blocked')
+      } else {
+        setSaveStatus('error')
+      }
+      setTimeout(() => setSaveStatus(null), 4000)
     } else {
-      setSaveStatus('saved')
+      setSaveStatus(null)
       onSaved(question.id, val.trim())
     }
-
-    setTimeout(() => setSaveStatus(null), 2500)
   }
 
   const handleTeamChange = (e) => {
@@ -64,10 +59,16 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
     if (val) handleSave(val)
   }
 
-  // Encontra o time selecionado pra mostrar a bandeira
+  // Encontra o time/jogador selecionado pra mostrar a bandeira
   const selectedTeam = isTeam ? teams.find((t) => t.name === answer) : null
-  const isPlayer = question.answer_type === 'player'
   const selectedPlayer = isPlayer ? PLAYERS.find((p) => p.name === answer) : null
+
+  // Borda verde persistente quando a resposta bate com o salvo
+  const selectBorder = matchesPrediction ? 'border-green-500/60' : 'border-gray-600'
+
+  const selectClasses = `w-full py-2.5 bg-gray-700/80 text-white text-sm rounded-lg
+    border ${selectBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
+    disabled:opacity-50 disabled:cursor-not-allowed transition-colors appearance-none`
 
   return (
     <div className="bg-gray-900/60 rounded-lg p-4">
@@ -93,10 +94,7 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
             value={answer}
             onChange={handleTeamChange}
             disabled={!isOpen}
-            className={`w-full py-2.5 bg-gray-700/80 text-white text-sm rounded-lg
-              border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
-              disabled:opacity-50 disabled:cursor-not-allowed transition-colors appearance-none
-              ${selectedTeam ? 'pl-10 pr-4' : 'px-4'}`}
+            className={`${selectClasses} ${selectedTeam ? 'pl-10 pr-4' : 'px-4'}`}
           >
             <option value="">Selecione uma seleção...</option>
             {teams.map((t) => (
@@ -117,10 +115,7 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
             value={answer}
             onChange={handleTeamChange}
             disabled={!isOpen}
-            className={`w-full py-2.5 bg-gray-700/80 text-white text-sm rounded-lg
-              border border-gray-600 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
-              disabled:opacity-50 disabled:cursor-not-allowed transition-colors appearance-none
-              ${selectedPlayer ? 'pl-10 pr-4' : 'px-4'}`}
+            className={`${selectClasses} ${selectedPlayer ? 'pl-10 pr-4' : 'px-4'}`}
           >
             <option value="">Selecione um jogador...</option>
             {PLAYERS.map((p) => (
@@ -139,16 +134,32 @@ function QuestionCard({ question, prediction, teams, now, userId, onSaved }) {
             {saveStatus === 'saving' && (
               <span className="text-yellow-400">Salvando...</span>
             )}
-            {saveStatus === 'saved' && (
-              <span className="text-green-400">✓ Salvo</span>
+            {saveStatus === 'blocked' && (
+              <span className="text-red-400">🔒 Palpite bloqueado — prazo encerrado</span>
             )}
             {saveStatus === 'error' && (
               <span className="text-red-400">Erro ao salvar</span>
             )}
-            {!saveStatus && remaining > 0 && (
-              <span className={remaining <= 3600000 ? 'text-yellow-400' : 'text-gray-500'}>
-                ⏱ {formatCountdown(remaining)} para responder
-              </span>
+            {!saveStatus && (
+              <>
+                {matchesPrediction && prediction.updated_at ? (
+                  // Resposta salva e bate com o select → timestamp persistente + countdown
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400">
+                      <span className="text-green-400">✓</span> Salvo {formatSavedTime(prediction.updated_at)}
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className={countdownColor(remaining)}>
+                      ⏱ {formatCountdown(remaining)}
+                    </span>
+                  </div>
+                ) : (
+                  // Sem resposta ou ainda não salvou — só countdown
+                  <span className={countdownColor(remaining)}>
+                    ⏱ {formatCountdown(remaining)}
+                  </span>
+                )}
+              </>
             )}
           </>
         )}
@@ -205,6 +216,8 @@ export default function SpecialPredictions({ userId, now }) {
     fetchAll()
   }, [userId])
 
+  // Callback pra atualizar state local imediatamente após salvar.
+  // Incluímos updated_at pro timestamp aparecer na hora, sem precisar refetch.
   const handleSaved = (questionId, answer) => {
     setPredictions((prev) => ({
       ...prev,
@@ -213,6 +226,7 @@ export default function SpecialPredictions({ userId, now }) {
         question_id: questionId,
         user_id: userId,
         answer,
+        updated_at: new Date().toISOString(),
       },
     }))
   }

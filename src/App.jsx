@@ -103,7 +103,7 @@ export default function App() {
     { id: 'groups', label: 'Tabela' },
     { id: 'standings', label: 'Ranking' },
     { id: 'rules', label: 'Regulamento' },
-    ...(isAdmin ? [{ id: 'admin', label: '⚙ Admin' }] : []),
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
   ]
 
   return (
