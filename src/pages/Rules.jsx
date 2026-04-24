@@ -84,7 +84,7 @@ export default function Rules() {
             </thead>
             <tbody className="text-gray-300">
               <MultRow fase="Fase de grupos" multi="×1" exemplo="15 pts" />
-              <MultRow fase="32 avos de final" multi="×2" exemplo="30 pts" />
+              <MultRow fase="16 avos de final" multi="×2" exemplo="30 pts" />
               <MultRow fase="Oitavas de final" multi="×3" exemplo="45 pts" />
               <MultRow fase="Quartas de final" multi="×4" exemplo="60 pts" />
               <MultRow fase="Semifinal" multi="×5" exemplo="75 pts" />

@@ -458,6 +458,10 @@ export default function Admin() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [now, setNow] = useState(() => Date.now())
+  // Mapa { match_id → quantidade de palpites }. Só usado na aba
+  // "Definir mata-mata" pra avisar admin antes de alterar um confronto
+  // que já tem palpites registrados.
+  const [predictionsCount, setPredictionsCount] = useState({})
 
   const fetchSpecial = async () => {
     const { data: questions } = await supabase
@@ -492,6 +496,25 @@ export default function Admin() {
     }
   }
 
+  // Conta palpites por match. Usado na aba "Definir mata-mata" pra
+  // avisar quantos palpites serão deletados antes de alterar um confronto.
+  const fetchPredictionsCount = async () => {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('match_id')
+
+    if (error) {
+      console.error('Erro ao contar palpites:', error)
+      return
+    }
+
+    const counts = {}
+    data.forEach((p) => {
+      counts[p.match_id] = (counts[p.match_id] || 0) + 1
+    })
+    setPredictionsCount(counts)
+  }
+
   useEffect(() => {
     const fetchAll = async () => {
       const [matchesRes, teamsRes] = await Promise.all([
@@ -515,6 +538,7 @@ export default function Admin() {
       setTeams(teamsRes.data || [])
 
       await fetchSpecial()
+      await fetchPredictionsCount()
       setLoading(false)
     }
 
@@ -549,10 +573,11 @@ export default function Admin() {
     )
   }
 
-  // Callback quando admin define os times de um match de mata-mata.
-  // Atualiza state local pra refletir os times novos (o card some da aba
-  // "Definir confrontos" porque deixa de ser placeholder).
-  const handleKnockoutSave = (matchId, homeId, awayId) => {
+  // Callback quando admin define OU altera os times de um match de mata-mata.
+  // Além de atualizar o match (home_team/away_team), zera o count de palpites
+  // desse match no state local (o RPC já deletou no banco) pra refletir
+  // imediatamente na UI.
+  const handleKnockoutSave = (matchId, homeId, awayId, deletedCount) => {
     const home = teams.find((t) => t.id === homeId)
     const away = teams.find((t) => t.id === awayId)
     setMatches((prev) =>
@@ -568,6 +593,10 @@ export default function Admin() {
           : m
       )
     )
+    // Se deletou palpites, zera o count desse match
+    if (deletedCount > 0) {
+      setPredictionsCount((prev) => ({ ...prev, [matchId]: 0 }))
+    }
   }
 
   if (loading) {
@@ -581,16 +610,23 @@ export default function Admin() {
     )
   }
 
-  // Pending exclui placeholders (matches sem times definidos) — eles só aparecem
-  // na aba "Definir confrontos", nunca em "Aguardando resultado"
+  // Pending: jogos com times definidos e não finalizados
   const pending = matches.filter(
     (m) => m.status !== 'finished' && m.home_team != null && m.away_team != null
   )
   const finished = matches
     .filter((m) => m.status === 'finished')
     .sort((a, b) => new Date(b.kickoff_time) - new Date(a.kickoff_time))
-  const knockout = matches.filter(
-    (m) => m.home_team == null || m.away_team == null
+
+  // "Definir mata-mata": apenas matches EDITÁVEIS — scheduled + kickoff no futuro.
+  // Inclui tanto placeholders (sem times) quanto já definidos (editáveis).
+  // Não aparecem aqui: jogos que já começaram (caem em "aguardando" ou
+  // "finalizados") nem jogos de grupos (esses não têm placeholder).
+  const editableKnockout = matches.filter(
+    (m) =>
+      m.round !== 'group' &&
+      m.status === 'scheduled' &&
+      new Date(m.kickoff_time).getTime() > now
   )
 
   const displayMatches =
@@ -598,7 +634,7 @@ export default function Admin() {
     filter === 'finished' ? finished :
     []
 
-  const groupedKnockout = groupByRound(knockout)
+  const groupedKnockout = groupByRound(editableKnockout)
 
   return (
     <div>
@@ -673,50 +709,42 @@ export default function Admin() {
               : 'bg-gray-800 text-gray-400 hover:text-white'
             }`}
         >
-          Definir confrontos
-          <span className="ml-1.5 text-xs opacity-70">({knockout.length})</span>
+          Definir mata-mata
+          <span className="ml-1.5 text-xs opacity-70">({editableKnockout.length})</span>
         </button>
       </div>
 
       {/* Conteúdo conforme filtro ativo */}
       {filter === 'knockout' ? (
-        // Nova aba: definir confrontos de mata-mata
-        knockout.length === 0 ? (
+        editableKnockout.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-gray-500 text-sm text-center">
-              Todos os confrontos de mata-mata já foram definidos.
+              Nenhum confronto de mata-mata pendente de definição ou edição.
             </p>
           </div>
         ) : (
-          <>
-            <div className="mb-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-              <p className="text-gray-400 text-xs leading-relaxed">
-                ℹ️ Após salvar um confronto, ele sai desta aba e vai pra "Aguardando resultado".
-                Pra editar depois, use o Supabase Studio.
-              </p>
-            </div>
-            <div className="space-y-6">
-              {groupedKnockout.map((group) => (
-                <div key={group.round}>
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                    {getRoundLabel(group.round)}
-                    <span className="ml-1.5 text-gray-600">({group.matches.length})</span>
-                  </h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {group.matches.map((m) => (
-                      <AdminKnockoutCard
-                        key={m.id}
-                        match={m}
-                        teams={teams}
-                        now={now}
-                        onSave={handleKnockoutSave}
-                      />
-                    ))}
-                  </div>
+          <div className="space-y-6">
+            {groupedKnockout.map((group) => (
+              <div key={group.round}>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                  {getRoundLabel(group.round)}
+                  <span className="ml-1.5 text-gray-600">({group.matches.length})</span>
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {group.matches.map((m) => (
+                    <AdminKnockoutCard
+                      key={m.id}
+                      match={m}
+                      teams={teams}
+                      now={now}
+                      predictionsCount={predictionsCount[m.id] ?? 0}
+                      onSave={handleKnockoutSave}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </>
+              </div>
+            ))}
+          </div>
         )
       ) : (
         // Abas originais: aguardando / finalizados

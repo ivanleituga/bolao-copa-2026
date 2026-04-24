@@ -53,7 +53,7 @@ export const MULTIPLIERS = {
 export function getRoundLabel(round) {
   const labels = {
     group: 'Grupos',
-    round_of_32: '32 avos',
+    round_of_32: '16 avos',
     round_of_16: 'Oitavas',
     quarter: 'Quartas',
     semi: 'Semifinal',

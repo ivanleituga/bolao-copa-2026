@@ -9,6 +9,22 @@ import SpecialPredictions from '../components/SpecialPredictions'
 
 const DIAS_LONG = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
+/**
+ * Nomes de fase pra mostrar no cabeçalho do dia.
+ * É diferente do getRoundLabel (scoring.js) — aqui usamos nomes mais
+ * completos e específicos pra leitura em cabeçalho ("Fase de Grupos"
+ * em vez de só "Grupos").
+ */
+const PHASE_LABEL = {
+  group: 'Fase de Grupos',
+  round_of_32: '16 avos de Final',
+  round_of_16: 'Oitavas de Final',
+  quarter: 'Quartas de Final',
+  semi: 'Semifinal',
+  third_place: 'Disputa do 3º Lugar',
+  final: 'Final',
+}
+
 /** Formata a data pra cabeçalho do dia. Ex: "Quinta, 11/06" */
 function formatDayHeader(iso) {
   const d = new Date(iso)
@@ -50,14 +66,24 @@ function groupByDay(matches) {
    ═══════════════════════════════════════════════════ */
 
 function DayGroup({ group, predictions, now, userId, onSaved }) {
+  // Fase do dia — todos os matches de um mesmo dia estão na mesma fase,
+  // então pegamos do primeiro match
+  const phase = PHASE_LABEL[group.matches[0].round]
+
   return (
     <div>
       {/* Cabeçalho do dia — sticky pra grudar no topo durante scroll */}
       <div className="sticky top-[52px] z-10 bg-gray-900/95 backdrop-blur-sm py-2 px-1 mb-1">
         <div className="flex items-center gap-2">
           <div className="h-px flex-1 bg-gray-700/50" />
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest text-center">
             {formatDayHeader(group.date)}
+            {phase && (
+              <>
+                <span className="text-gray-600 mx-1.5">·</span>
+                <span className="text-gray-500">{phase}</span>
+              </>
+            )}
           </h3>
           <div className="h-px flex-1 bg-gray-700/50" />
         </div>
@@ -89,7 +115,6 @@ export default function Schedule({ userId }) {
   const [filter, setFilter] = useState('upcoming')
 
   // Busca todas as fases — já preparado pra mata-mata
-  // Hoje só existem jogos de 'group' no banco; os demais entram quando a Fase 3 for feita
   const { matches, predictions, loading, handlePredictionSaved } =
     useMatchesAndPredictions(userId, [
       'group',
