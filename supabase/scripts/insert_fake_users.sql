@@ -1,13 +1,16 @@
 -- ============================================================
--- BOLÃO COPA 2026 - Seed: 34 Usuários Fake para Teste
+-- BOLÃO COPA 2026 - Inserir 26 usuários fake (TEMPORÁRIO)
 -- ============================================================
--- Cria 34 usuários com palpites aleatórios nos jogos finalizados.
--- Emails: fake01@bolao.test ... fake34@bolao.test
--- Senha: bolao2026 (não importa, ninguém vai logar)
+-- Use APENAS pra testar a visualização da tabela com mais participantes.
+-- Os fakes têm emails @fake.bolao pra serem facilmente identificáveis e deletáveis.
 --
--- Para APAGAR tudo depois:
---   DELETE FROM auth.users WHERE email LIKE '%@bolao.test';
---   (CASCADE apaga profiles e predictions automaticamente)
+-- O que faz:
+-- 1. Cria 26 usuários no auth.users (Supabase Auth)
+-- 2. Trigger on_auth_user_created cria os profiles automaticamente
+-- 3. Insere palpites aleatórios pra cada jogo finalizado
+-- 4. Pontos são calculados via calc_prediction_points
+--
+-- Pra DELETAR depois, rodar: delete_fake_users_visual_test.sql
 -- ============================================================
 
 DO $$
@@ -16,12 +19,10 @@ DECLARE
     'André Silva', 'Bruno Costa', 'Carlos Eduardo', 'Daniel Rocha',
     'Eduardo Lima', 'Felipe Souza', 'Gabriel Santos', 'Henrique Melo',
     'Igor Ferreira', 'João Pedro', 'Kaique Ribeiro', 'Leonardo Alves',
-    'Matheus Duarte', 'Nicolas Araújo', 'Otávio Pinto', 'Pedro Henrique',
-    'Rafael Moreira', 'Samuel Teixeira', 'Thiago Nunes', 'Vinícius Dias',
-    'Ana Clara', 'Beatriz Monteiro', 'Camila Ramos', 'Daniela Freitas',
-    'Eduarda Vieira', 'Fernanda Lopes', 'Gabriela Martins', 'Helena Cardoso',
-    'Isabela Cruz', 'Juliana Pereira', 'Larissa Gomes', 'Mariana Fonseca',
-    'Natália Barbosa', 'Paula Mendes'
+    'Matheus Duarte', 'Ana Clara', 'Beatriz Monteiro', 'Camila Ramos',
+    'Daniela Freitas', 'Eduarda Vieira', 'Fernanda Lopes', 'Gabriela Martins',
+    'Helena Cardoso', 'Isabela Cruz', 'Juliana Pereira', 'Larissa Gomes',
+    'Mariana Fonseca', 'Natália Barbosa'
   ];
   v_user_id UUID;
   v_match RECORD;
@@ -29,7 +30,7 @@ DECLARE
   v_away INTEGER;
   v_multiplier INTEGER;
 BEGIN
-  FOR i IN 1..34 LOOP
+  FOR i IN 1..26 LOOP
     v_user_id := gen_random_uuid();
 
     -- Cria o usuário no auth do Supabase
@@ -45,8 +46,8 @@ BEGIN
       v_user_id,
       '00000000-0000-0000-0000-000000000000',
       'authenticated', 'authenticated',
-      'fake' || LPAD(i::text, 2, '0') || '@bolao.test',
-      crypt('bolao2026', gen_salt('bf')),
+      'visualtest' || LPAD(i::text, 2, '0') || '@fake.bolao',
+      crypt('teste2026', gen_salt('bf')),
       NOW(),
       jsonb_build_object('display_name', nomes[i]),
       NOW(), NOW(),
@@ -54,14 +55,13 @@ BEGIN
     );
     -- O trigger on_auth_user_created cria o profile automaticamente
 
-    -- Insere palpites aleatórios para cada jogo finalizado
+    -- Insere palpites aleatórios para cada jogo já finalizado
     FOR v_match IN
       SELECT id, round, home_score, away_score
       FROM matches
       WHERE status = 'finished'
         AND home_score IS NOT NULL
     LOOP
-      -- Gera placares aleatórios (0 a 4 gols, com peso maior pra placares baixos)
       v_home := CASE
         WHEN random() < 0.35 THEN 0
         WHEN random() < 0.65 THEN 1
@@ -90,17 +90,21 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  RAISE NOTICE '34 usuários fake criados com palpites aleatórios!';
+  RAISE NOTICE '26 usuários fake criados com palpites aleatórios.';
 END;
 $$;
 
--- Verificação rápida:
--- SELECT count(*) FROM profiles;                        -- Esperado: 35 (1 real + 34 fake)
--- SELECT count(*) FROM predictions;                     -- Esperado: seus palpites + 34×6 = +204
--- SELECT * FROM ranking LIMIT 10;                       -- Top 10 do ranking
--- SELECT email FROM auth.users WHERE email LIKE '%@bolao.test' LIMIT 5;  -- Confirma padrão
-
-
--- PARA DELETÁ-LOS:
-
-DELETE FROM auth.users WHERE email LIKE '%@bolao.test';
+-- ============================================================
+-- Verificações:
+-- ============================================================
+-- Total de profiles agora:
+--   SELECT count(*) FROM profiles;
+--
+-- Listar só os fakes desse teste visual:
+--   SELECT email, raw_user_meta_data->>'display_name' AS nome
+--   FROM auth.users WHERE email LIKE '%@fake.bolao'
+--   ORDER BY email;
+--
+-- Ver o ranking completo:
+--   SELECT * FROM ranking;
+-- ============================================================
