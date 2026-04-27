@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { getPointsLabel, getPointsColor, MULTIPLIERS } from '../lib/scoring'
 import { formatCountdown, countdownColor, formatSavedTime } from '../lib/timeformat'
 import { TeamFlag } from './TeamFlag'
+import MatchPredictionsModal from './MatchPredictionsModal'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -30,13 +31,9 @@ function sanitizeScore(value) {
 
 /* ═══════════════════════════════════════════════════
    TeamSide — renderiza um lado do confronto (casa ou visitante).
-   Se o time real estiver definido, mostra bandeira + nome.
-   Se estiver como placeholder (ex: "1A", "3ABCDF", "W73"), mostra
-   uma caixinha pontilhada no lugar da bandeira e o texto em cinza.
    ═══════════════════════════════════════════════════ */
 
 function TeamSide({ team, placeholder, align }) {
-  // Elemento da "bandeira": real ou caixinha pontilhada (mesma dimensão do TeamFlag size=22)
   const flagEl = team ? (
     <TeamFlag code={team.code} size={22} />
   ) : (
@@ -46,12 +43,9 @@ function TeamSide({ team, placeholder, align }) {
     />
   )
 
-  // Nome ou placeholder
   const label = team ? team.name : placeholder
   const labelColor = team ? 'text-white' : 'text-gray-500 italic'
 
-  // Casa fica à direita → nome ANTES da bandeira (texto alinhado à direita)
-  // Visitante fica à esquerda → bandeira ANTES do nome
   if (align === 'right') {
     return (
       <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
@@ -73,7 +67,9 @@ function TeamSide({ team, placeholder, align }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   MatchCard — card de um jogo com input de palpite
+   MatchCard — card de um jogo com input de palpite.
+   Clicar no card abre um modal com os palpites de todos os usuários.
+   Cliques nos inputs de placar NÃO disparam o modal (stopPropagation).
    ═══════════════════════════════════════════════════ */
 
 export default function MatchCard({ match, prediction, now, userId, onSaved }) {
@@ -84,9 +80,8 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
     prediction?.away_score != null ? String(prediction.away_score) : ''
   )
   const [saveStatus, setSaveStatus] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
-  // Ref pra sempre ter a versão mais recente de onSaved sem precisar
-  // incluí-la nas deps do useEffect (evita re-runs desnecessários do debounce)
   const onSavedRef = useRef(onSaved)
   useEffect(() => { onSavedRef.current = onSaved })
 
@@ -97,19 +92,16 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
 
   const deadline = new Date(match.kickoff_time).getTime() - 5 * 60 * 1000
   const remaining = deadline - now
-  // isOpen fica false quando placeholder — isso automaticamente desabilita
-  // inputs, auto-save e tudo que depende dessa flag
   const isOpen = remaining > 0 && match.status !== 'finished' && !isPlaceholderMatch
   const isFinished = match.status === 'finished' && match.home_score != null
 
-  // Estado derivado: os inputs atuais batem com o palpite salvo?
   const h = parseInt(home)
   const a = parseInt(away)
   const hasValidInputs = !isNaN(h) && !isNaN(a)
   const matchesPrediction = hasValidInputs && prediction
     && prediction.home_score === h && prediction.away_score === a
 
-  // Auto-save com debounce de 800ms após a última alteração dos inputs
+  // Auto-save com debounce de 800ms
   useEffect(() => {
     if (!isOpen) return
     if (!hasValidInputs) return
@@ -147,153 +139,193 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [home, away, isOpen, matchesPrediction, userId, match.id])
 
-  // Borda verde persistente quando o valor nos inputs bate com o palpite salvo
   const inputBorder = matchesPrediction ? 'border-green-500/60' : 'border-gray-600'
 
   const inputClasses = `w-9 h-9 text-center bg-gray-700/80 text-white font-bold text-base rounded-lg
     border ${inputBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
     disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
+  // Card é clicável quando NÃO é placeholder (placeholder não tem o que mostrar
+  // de palpites de outros porque a RLS bloqueia até o jogo começar e
+  // ninguém deveria ter palpitado mesmo)
+  const isClickable = !isPlaceholderMatch
+  const cardCursor = isClickable ? 'cursor-pointer' : ''
+  // Hover sutil só pra cards clicáveis
+  const cardHover = isClickable ? 'hover:bg-gray-700/10 transition-colors' : ''
+
+  // Handler do clique do card. Abre modal só se for clicável.
+  // Os inputs de placar usam stopPropagation próprio pra não disparar isso.
+  const handleCardClick = () => {
+    if (!isClickable) return
+    setModalOpen(true)
+  }
+
+  // Helper pra impedir propagação em elementos interativos internos.
+  // Usado nos inputs de placar — clicar/digitar não deve abrir modal.
+  const stop = (e) => e.stopPropagation()
+
   return (
-    <div className="flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0">
-      {/* Estádio + Data */}
-      <div className="text-center space-y-0.5">
-        {match.venue && (
-          <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
-            {match.venue}
+    <>
+      <div
+        onClick={handleCardClick}
+        className={`flex-1 flex flex-col justify-center py-3.5 space-y-2 border-b border-gray-700/30 last:border-0 -mx-3 px-3
+          ${cardCursor} ${cardHover}`}
+      >
+        {/* Estádio + Data */}
+        <div className="text-center space-y-0.5">
+          {match.venue && (
+            <p className="text-gray-300 text-[10px] uppercase tracking-wider leading-tight truncate px-2">
+              {match.venue}
+            </p>
+          )}
+          <p className="text-gray-400 text-xs font-medium">
+            {formatMatchDate(match.kickoff_time)}
           </p>
-        )}
-        <p className="text-gray-400 text-xs font-medium">
-          {formatMatchDate(match.kickoff_time)}
-        </p>
-      </div>
+        </div>
 
-      {/* Seleções + Placar/Palpite */}
-      <div className="flex items-center justify-center gap-2">
-        {/* Casa */}
-        <TeamSide
-          team={match.home_team}
-          placeholder={match.home_placeholder}
-          align="right"
-        />
+        {/* Seleções + Placar/Palpite */}
+        <div className="flex items-center justify-center gap-2">
+          {/* Casa */}
+          <TeamSide
+            team={match.home_team}
+            placeholder={match.home_placeholder}
+            align="right"
+          />
 
-        {/* Área de placar */}
-        {isFinished ? (
-          <div className="flex items-center gap-2 px-3 py-1 bg-gray-700/40 rounded-lg">
-            <span className="text-white font-bold text-lg w-5 text-center">
-              {match.home_score}
+          {/* Área de placar */}
+          {isFinished ? (
+            <div className="flex items-center gap-2 px-3 py-1 bg-gray-700/40 rounded-lg">
+              <span className="text-white font-bold text-lg w-5 text-center">
+                {match.home_score}
+              </span>
+              <span className="text-gray-500 text-xs">×</span>
+              <span className="text-white font-bold text-lg w-5 text-center">
+                {match.away_score}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-1">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={2}
+                value={home}
+                onChange={(e) => setHome(sanitizeScore(e.target.value))}
+                onClick={stop}
+                onFocus={stop}
+                disabled={!isOpen}
+                className={inputClasses}
+              />
+              <span className="text-gray-500 text-sm font-bold">×</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={2}
+                value={away}
+                onChange={(e) => setAway(sanitizeScore(e.target.value))}
+                onClick={stop}
+                onFocus={stop}
+                disabled={!isOpen}
+                className={inputClasses}
+              />
+            </div>
+          )}
+
+          {/* Visitante */}
+          <TeamSide
+            team={match.away_team}
+            placeholder={match.away_placeholder}
+            align="left"
+          />
+        </div>
+
+        {/* Linha de status */}
+        <div className="text-center text-[11px] min-h-[16px]">
+          {/* Placeholder: aguardando definição do confronto */}
+          {isPlaceholderMatch && (
+            <span className="text-gray-500 italic">
+              ⏳ Aguardando definição do confronto
             </span>
-            <span className="text-gray-500 text-xs">×</span>
-            <span className="text-white font-bold text-lg w-5 text-center">
-              {match.away_score}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 px-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              value={home}
-              onChange={(e) => setHome(sanitizeScore(e.target.value))}
-              disabled={!isOpen}
-              className={inputClasses}
-            />
-            <span className="text-gray-500 text-sm font-bold">×</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              value={away}
-              onChange={(e) => setAway(sanitizeScore(e.target.value))}
-              disabled={!isOpen}
-              className={inputClasses}
-            />
-          </div>
-        )}
+          )}
 
-        {/* Visitante */}
-        <TeamSide
-          team={match.away_team}
-          placeholder={match.away_placeholder}
-          align="left"
-        />
-      </div>
+          {/* Jogo finalizado: mostra resultado e pontos */}
+          {!isPlaceholderMatch && isFinished && prediction && (
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              <span className="text-gray-400">
+                Seu palpite: {prediction.home_score} × {prediction.away_score}
+              </span>
+              {prediction.points != null && (
+                <>
+                  <span className="text-gray-600">·</span>
+                  <span className={getPointsColor(prediction.points, MULTIPLIERS[match.round])}>
+                    {getPointsLabel(prediction.points, MULTIPLIERS[match.round], prediction.home_score, prediction.away_score)}
+                  </span>
+                  <span className="text-gray-600">·</span>
+                  <span className={`font-bold ${getPointsColor(prediction.points, MULTIPLIERS[match.round])}`}>
+                    +{prediction.points} pts
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+          {!isPlaceholderMatch && isFinished && !prediction && (
+            <span className="text-gray-600 italic">Sem palpite</span>
+          )}
 
-      {/* Linha de status */}
-      <div className="text-center text-[11px] min-h-[16px]">
-        {/* Placeholder: aguardando definição do confronto */}
-        {isPlaceholderMatch && (
-          <span className="text-gray-500 italic">
-            ⏳ Aguardando definição do confronto
-          </span>
-        )}
-
-        {/* Jogo finalizado: mostra resultado e pontos */}
-        {!isPlaceholderMatch && isFinished && prediction && (
-          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-            <span className="text-gray-400">
-              Seu palpite: {prediction.home_score} × {prediction.away_score}
-            </span>
-            {prediction.points != null && (
-              <>
-                <span className="text-gray-600">·</span>
-                <span className={getPointsColor(prediction.points, MULTIPLIERS[match.round])}>
-                  {getPointsLabel(prediction.points, MULTIPLIERS[match.round], prediction.home_score, prediction.away_score)}
-                </span>
-                <span className="text-gray-600">·</span>
-                <span className={`font-bold ${getPointsColor(prediction.points, MULTIPLIERS[match.round])}`}>
-                  +{prediction.points} pts
-                </span>
-              </>
-            )}
-          </div>
-        )}
-        {!isPlaceholderMatch && isFinished && !prediction && (
-          <span className="text-gray-600 italic">Sem palpite</span>
-        )}
-
-        {/* Jogo aberto */}
-        {!isPlaceholderMatch && !isFinished && isOpen && (
-          <>
-            {saveStatus === 'saving' && (
-              <span className="text-yellow-400">Salvando...</span>
-            )}
-            {saveStatus === 'blocked' && (
-              <span className="text-red-400">🔒 Palpite bloqueado — partida já iniciada</span>
-            )}
-            {saveStatus === 'error' && (
-              <span className="text-red-400">Erro ao salvar</span>
-            )}
-            {!saveStatus && (
-              <>
-                {matchesPrediction && prediction.updated_at ? (
-                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                    <span className="text-gray-400">
-                      <span className="text-green-400">✓</span> Palpite salvo {formatSavedTime(prediction.updated_at)}
-                    </span>
-                    <span className="text-gray-600">·</span>
+          {/* Jogo aberto */}
+          {!isPlaceholderMatch && !isFinished && isOpen && (
+            <>
+              {saveStatus === 'saving' && (
+                <span className="text-yellow-400">Salvando...</span>
+              )}
+              {saveStatus === 'blocked' && (
+                <span className="text-red-400">🔒 Palpite bloqueado — partida já iniciada</span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="text-red-400">Erro ao salvar</span>
+              )}
+              {!saveStatus && (
+                <>
+                  {matchesPrediction && prediction.updated_at ? (
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      <span className="text-gray-400">
+                        <span className="text-green-400">✓</span> Palpite salvo {formatSavedTime(prediction.updated_at)}
+                      </span>
+                      <span className="text-gray-600">·</span>
+                      <span className={countdownColor(remaining)}>
+                        ⏱ {formatCountdown(remaining)}
+                      </span>
+                    </div>
+                  ) : (
                     <span className={countdownColor(remaining)}>
                       ⏱ {formatCountdown(remaining)}
                     </span>
-                  </div>
-                ) : (
-                  <span className={countdownColor(remaining)}>
-                    ⏱ {formatCountdown(remaining)}
-                  </span>
-                )}
-              </>
-            )}
-          </>
-        )}
+                  )}
+                </>
+              )}
+            </>
+          )}
 
-        {/* Jogo encerrado (deadline passou mas não foi finalizado ainda) */}
-        {!isPlaceholderMatch && !isFinished && !isOpen && (
-          <span className="text-gray-500">🔒 Encerrado</span>
-        )}
+          {/* Jogo encerrado (deadline passou mas não foi finalizado ainda) */}
+          {!isPlaceholderMatch && !isFinished && !isOpen && (
+            <span className="text-gray-500">🔒 Encerrado</span>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Modal de palpites — renderizado fora do card pra não herdar
+          estilos de container. Só monta quando aberto pra não fazer
+          fetch desnecessário. */}
+      {modalOpen && (
+        <MatchPredictionsModal
+          match={match}
+          currentUserId={userId}
+          now={now}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </>
   )
 }
