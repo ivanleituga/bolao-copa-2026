@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import UserPredictionsModal from '../components/UserPredictionsModal'
 
 /* ═══════════════════════════════════════════════════
    Configuração visual de cada zona
    ═══════════════════════════════════════════════════ */
 
 const TIER_CONFIG = {
-  // Pódio — tratamento premium com gradientes
   gold: {
     cardBg: 'bg-gradient-to-r from-yellow-500/[0.12] via-yellow-500/[0.06] to-transparent',
     barFrom: '#fbbf24',
@@ -40,7 +40,6 @@ const TIER_CONFIG = {
     tag: '3º LUGAR',
     tagBg: 'bg-amber-700/15 text-amber-400 border-amber-700/30',
   },
-  // Zona Libertadores (4-8)
   reward: {
     cardBg: 'bg-gradient-to-r from-blue-500/[0.08] to-transparent',
     barFrom: '#3b82f6',
@@ -52,7 +51,6 @@ const TIER_CONFIG = {
     tag: 'LIBERTADORES',
     tagBg: 'bg-blue-500/10 text-blue-400 border-blue-500/25',
   },
-  // Zona neutra (meio da tabela)
   neutral: {
     cardBg: '',
     barFrom: '#374151',
@@ -64,7 +62,6 @@ const TIER_CONFIG = {
     tag: null,
     tagBg: '',
   },
-  // Zona de rebaixamento (n-3 até n-1)
   loss: {
     cardBg: 'bg-gradient-to-r from-red-500/[0.07] to-transparent',
     barFrom: '#ef4444',
@@ -76,7 +73,6 @@ const TIER_CONFIG = {
     tag: 'REBAIXAMENTO',
     tagBg: 'bg-red-500/10 text-red-400 border-red-500/25',
   },
-  // Último colocado — ENEM 2027 (anti-pódio: tratamento premium reverso)
   bottom: {
     cardBg: 'bg-gradient-to-r from-red-700/[0.30] via-red-700/[0.15] to-red-900/[0.05]',
     barFrom: '#7f1d1d',
@@ -101,13 +97,11 @@ function getTier(position, total) {
 }
 
 /* ═══════════════════════════════════════════════════
-   Stat chip — pílula visual
-   Background mais sólido (gray-900/60) pra contrastar com gradientes do card
+   Stat chip
    ═══════════════════════════════════════════════════ */
 
 function StatChip({ icon, value, label, activeColor }) {
   const hasValue = value !== 0 && value !== '0' && value !== '+0'
-  // Cor do conteúdo: ativa quando há valor, cinza-médio quando vazio (gray-500 em vez de gray-600)
   const contentColor = hasValue ? activeColor : 'text-gray-500'
 
   return (
@@ -124,10 +118,10 @@ function StatChip({ icon, value, label, activeColor }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   PlayerCard — card individual do participante
+   PlayerCard
    ═══════════════════════════════════════════════════ */
 
-function PlayerCard({ player, position, isMe, total }) {
+function PlayerCard({ player, position, isMe, total, onClick }) {
   const tierKey = getTier(position, total)
   const tier = TIER_CONFIG[tierKey]
   const isPodium = position <= 3
@@ -144,23 +138,22 @@ function PlayerCard({ player, position, isMe, total }) {
 
   return (
     <div className="relative">
-      {/* Glow externo do card "você" */}
       {isMe && (
         <div className="absolute -inset-px rounded-xl bg-gradient-to-r from-green-500/40 via-emerald-500/20 to-green-500/40 blur-[2px] opacity-70" />
       )}
 
       <div
+        onClick={onClick}
         className={`relative overflow-hidden rounded-xl
           bg-gray-800/80
           ${tier.cardBg}
           ${tier.glow}
           ${isMe ? 'ring-2 ring-green-500/60' : tier.ringColor ? `ring-1 ${tier.ringColor}` : ''}
           transition-all duration-200
-          hover:bg-gray-800
+          cursor-pointer hover:bg-gray-700/40
           ${cardPadding}
         `}
       >
-        {/* Barra de energia lateral */}
         <div
           className="absolute top-0 left-0 bottom-0 w-1.5"
           style={{
@@ -168,9 +161,7 @@ function PlayerCard({ player, position, isMe, total }) {
           }}
         />
 
-        {/* Conteúdo */}
         <div className="relative pl-4 flex items-center gap-4">
-          {/* Posição */}
           <div className="flex-shrink-0 w-10 flex items-center justify-center">
             <span
               className={`font-black tabular-nums leading-none ${tier.posColor} ${positionSize}`}
@@ -179,11 +170,7 @@ function PlayerCard({ player, position, isMe, total }) {
             </span>
           </div>
 
-          {/* Bloco central: nome + chips */}
           <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-            {/* Linha 1: nome + tags
-                items-center + leading-tight em todos: alinhamento perfeito
-                gap-3: respiro entre nome e tags */}
             <div className="flex items-center gap-3 min-w-0">
               <span
                 className={`truncate font-bold leading-tight min-w-0
@@ -210,7 +197,6 @@ function PlayerCard({ player, position, isMe, total }) {
               </div>
             </div>
 
-            {/* Linha 2: chips */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <StatChip
                 icon="◎"
@@ -233,7 +219,6 @@ function PlayerCard({ player, position, isMe, total }) {
             </div>
           </div>
 
-          {/* Pontos */}
           <div className="flex-shrink-0 text-right">
             <div
               className={`font-black tabular-nums leading-none ${ptsSize} ${tier.ptsColor}`}
@@ -256,29 +241,50 @@ function PlayerCard({ player, position, isMe, total }) {
 
 export default function Standings({ userId }) {
   const [ranking, setRanking] = useState([])
+  const [allTeams, setAllTeams] = useState([])
+  const [specialDeadline, setSpecialDeadline] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [selectedUserId, setSelectedUserId] = useState(null)
 
   useEffect(() => {
-    const fetchRanking = async () => {
-      const { data, error } = await supabase.from('ranking').select('*')
+    const fetchAll = async () => {
+      const [rankingRes, teamsRes, questionsRes] = await Promise.all([
+        supabase.from('ranking').select('*'),
+        supabase.from('teams').select('id, name, code'),
+        supabase.from('special_questions').select('deadline'),
+      ])
 
-      if (error) {
-        console.error('Erro ao buscar ranking:', error)
+      if (rankingRes.error) {
+        console.error('Erro ao buscar ranking:', rankingRes.error)
         setLoading(false)
         return
       }
 
-      const sorted = (data || []).sort((a, b) => {
+      const sorted = (rankingRes.data || []).sort((a, b) => {
         if (b.total_points !== a.total_points) return b.total_points - a.total_points
         if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas
         return b.total_acertos - a.total_acertos
       })
 
       setRanking(sorted)
+      setAllTeams(teamsRes.data || [])
+
+      // Pega o menor deadline entre as perguntas especiais (na prática
+      // são todos iguais, mas tomamos o mínimo por segurança)
+      const deadlines = (questionsRes.data || [])
+        .map((q) => q.deadline)
+        .filter(Boolean)
+      if (deadlines.length > 0) {
+        const minDeadline = deadlines.reduce((min, d) =>
+          new Date(d) < new Date(min) ? d : min
+        )
+        setSpecialDeadline(minDeadline)
+      }
+
       setLoading(false)
     }
 
-    fetchRanking()
+    fetchAll()
   }, [])
 
   if (loading) {
@@ -323,12 +329,12 @@ export default function Standings({ userId }) {
               position={position}
               isMe={isMe}
               total={total}
+              onClick={() => setSelectedUserId(player.profile_id)}
             />
           )
         })}
       </div>
 
-      {/* Legenda */}
       <div className="mt-6 pt-4 border-t border-gray-800/60">
         <p className="text-center text-[10px] text-gray-600 uppercase tracking-widest mb-2 font-bold">
           Zonas de premiação
@@ -342,6 +348,16 @@ export default function Standings({ userId }) {
           <LegendItem barColor="#000000" label="ENEM 2027" />
         </div>
       </div>
+
+      {selectedUserId && (
+        <UserPredictionsModal
+          userId={selectedUserId}
+          currentUserId={userId}
+          allTeams={allTeams}
+          specialDeadline={specialDeadline}
+          onClose={() => setSelectedUserId(null)}
+        />
+      )}
     </div>
   )
 }
