@@ -2,25 +2,28 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
+ * Verifica se o palpite acerta uma das respostas corretas.
+ * correct_answer pode ser:
+ *   - null: ainda não definido → retorna null (aguardando)
+ *   - "Mbappé": resposta única → true se palpite === "Mbappé"
+ *   - "Mbappé,Haaland": múltiplas → true se palpite está em qualquer
+ * Normalização: case-insensitive, trim em ambos os lados, trim de
+ * cada elemento da lista (tolera "Mbappé, Haaland" com espaço extra).
+ */
+function checkSpecialCorrect(answer, correctAnswer) {
+  if (correctAnswer == null) return null
+  const userAnswer = answer.toLowerCase().trim()
+  const correctList = correctAnswer.split(',').map((s) => s.toLowerCase().trim())
+  return correctList.includes(userAnswer)
+}
+
+/**
  * Busca o histórico visível de palpites de um usuário:
- * 1. Palpites em jogos — só os que fazem sentido socialmente:
- *    jogo iniciado (kickoff_time <= now) OU finalizado (status = finished)
+ * 1. Palpites em jogos — só os que fazem sentido socialmente
  * 2. Palpites especiais — sempre que a RLS retornar
  *
- * IMPORTANTE: a RLS de predictions já filtra pra usuários comuns (só
- * veem o que tem direito). Mas pro admin, a RLS libera tudo via cláusula
- * 3. Aqui aplicamos um filtro client-side adicional pra que mesmo o
- * admin não veja palpites de jogos futuros nesse modal específico — o
- * "perfil social" exibe só o que faria sentido qualquer pessoa ver.
- *
- * Carrega só quando userId estiver definido (lazy — modal aberto).
- *
- * Retorno:
- *   - matchPredictions: array de palpites em jogos visíveis
- *     (ordenado por kickoff_time decrescente)
- *   - specialPredictions: array combinando perguntas + respostas
- *   - profile: { id, display_name } do usuário consultado
- *   - loading, error
+ * Filtro client-side adicional pra que admin não veja palpites de
+ * jogos futuros nesse modal específico.
  */
 export function useUserPredictions(userId) {
   const [matchPredictions, setMatchPredictions] = useState([])
@@ -80,7 +83,6 @@ export function useUserPredictions(userId) {
 
       setProfile(profileRes.data)
 
-      // Busca dados completos dos matches pra enriquecer os palpites
       const matchIds = (matchPredsRes.data || []).map((p) => p.match_id)
       let matchesData = []
       if (matchIds.length > 0) {
@@ -98,19 +100,12 @@ export function useUserPredictions(userId) {
       const matchById = {}
       matchesData.forEach((m) => { matchById[m.id] = m })
 
-      // FILTRO CLIENT-SIDE: descarta palpites de jogos que ainda não foram
-      // iniciados nem finalizados. Isso protege contra:
-      // 1. Admin abrir o perfil e ver palpites alheios de jogos futuros
-      //    (a RLS libera pro admin, mas socialmente faz mais sentido bloquear)
-      // 2. Próprio usuário ver palpites futuros no perfil (não tem uso real,
-      //    e fica visualmente poluído)
       const nowMs = Date.now()
       const enriched = (matchPredsRes.data || [])
         .map((pred) => {
           const m = matchById[pred.match_id]
           if (!m) return null
 
-          // Filtro: o jogo precisa ter começado ou estar finalizado
           const kickoffMs = new Date(m.kickoff_time).getTime()
           const isStarted = kickoffMs <= nowMs
           const isFinished = m.status === 'finished'
@@ -136,7 +131,6 @@ export function useUserPredictions(userId) {
 
       setMatchPredictions(enriched)
 
-      // Combina especiais com perguntas
       const questionById = {}
       ;(specialQsRes.data || []).forEach((q) => { questionById[q.id] = q })
 
@@ -144,9 +138,8 @@ export function useUserPredictions(userId) {
         .map((sp) => {
           const q = questionById[sp.question_id]
           if (!q) return null
-          const isCorrect = q.correct_answer
-            ? sp.answer.toLowerCase().trim() === q.correct_answer.toLowerCase().trim()
-            : null
+          // Aceita lista separada por vírgula em correct_answer
+          const isCorrect = checkSpecialCorrect(sp.answer, q.correct_answer)
           return {
             question_id: q.id,
             question_text: q.question_text,

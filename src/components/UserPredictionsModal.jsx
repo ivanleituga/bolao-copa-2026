@@ -29,6 +29,17 @@ function formatDeadline(iso) {
   return `${dd}/${mm} às ${hh}:${min}`
 }
 
+/**
+ * Parse correct_answer pra lista limpa.
+ * "Mbappé,Haaland" → ["Mbappé", "Haaland"]
+ * "Mbappé" → ["Mbappé"]
+ * null → []
+ */
+function parseCorrectAnswers(correctAnswer) {
+  if (!correctAnswer) return []
+  return correctAnswer.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
 /* ═══════════════════════════════════════════════════
    MatchPredictionRow
    ═══════════════════════════════════════════════════ */
@@ -45,7 +56,6 @@ function MatchPredictionRow({ item }) {
           ? 'bg-green-500/10 border-green-500/30'
           : 'bg-gray-800/50 border-gray-700/30'}`}
     >
-      {/* Linha 1: data + fase + cravada badge */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
           {formatDate(item.kickoff_time)}
@@ -60,7 +70,6 @@ function MatchPredictionRow({ item }) {
         )}
       </div>
 
-      {/* Linha 2: confronto + palpite (sem pontos aqui) */}
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
           <span className="text-white text-sm font-medium truncate text-right">
@@ -87,9 +96,6 @@ function MatchPredictionRow({ item }) {
         </div>
       </div>
 
-      {/* Linha 3 (só finalizado): PLACAR FINAL · pontos
-          Cor neutra (gray-300) na pontuação aqui — a cor da cravada
-          já é codificada pelo fundo verde do card todo. */}
       {isFinished && (
         <div className="mt-1.5 text-center">
           <span className="text-[9px] text-gray-500 uppercase tracking-wider">
@@ -132,7 +138,13 @@ function SpecialPredictionRow({ item, allTeams }) {
     statusBg = 'bg-green-500/10 border-green-500/30'
   } else if (item.isCorrect === false) {
     statusColor = 'text-red-400/80'
-    statusLabel = `Errou — resposta correta: ${item.correct_answer}`
+    // Plural se mais de uma resposta correta
+    const corrects = parseCorrectAnswers(item.correct_answer)
+    if (corrects.length > 1) {
+      statusLabel = `Errou — respostas corretas: ${corrects.join(', ')}`
+    } else {
+      statusLabel = `Errou — resposta correta: ${corrects[0] ?? ''}`
+    }
     statusBg = 'bg-gray-800/50 border-gray-700/30'
   }
 

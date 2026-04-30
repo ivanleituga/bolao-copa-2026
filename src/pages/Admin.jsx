@@ -287,16 +287,53 @@ function AdminMatchCard({ match, onResult, onReset }) {
    ═══════════════════════════════════════════════════ */
 
 function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
-  const [correctAnswer, setCorrectAnswer] = useState(question.correct_answer ?? '')
+  const isMulti = question.answer_type === 'player'
+
+  // Parse inicial: se já tem correct_answer salvo, transforma em array
+  // pra modo multi, ou mantém como string pra modo single.
+  const parseInitial = (val) => {
+    if (!val) return isMulti ? [] : ''
+    if (isMulti) {
+      return val.split(',').map((s) => s.trim()).filter(Boolean)
+    }
+    return val
+  }
+
+  const [correctAnswer, setCorrectAnswer] = useState(parseInitial(question.correct_answer))
+  const [pendingPick, setPendingPick] = useState('')  // nome no dropdown ainda não adicionado
   const [savingCorrect, setSavingCorrect] = useState(false)
 
+  // Adiciona o nome do dropdown à lista (multi). Evita duplicatas.
+  const handleAddPick = () => {
+    if (!pendingPick) return
+    if (correctAnswer.includes(pendingPick)) {
+      setPendingPick('')
+      return
+    }
+    setCorrectAnswer([...correctAnswer, pendingPick])
+    setPendingPick('')
+  }
+
+  // Remove um chip da lista (multi)
+  const handleRemove = (name) => {
+    setCorrectAnswer(correctAnswer.filter((n) => n !== name))
+  }
+
   const handleSaveCorrectAnswer = async () => {
-    if (!correctAnswer.trim()) return
+    let toSave
+    if (isMulti) {
+      if (correctAnswer.length === 0) return
+      toSave = correctAnswer.join(',')
+    } else {
+      if (!correctAnswer.trim()) return
+      toSave = correctAnswer.trim()
+    }
+
     setSavingCorrect(true)
 
     const { error } = await supabase
       .from('special_questions')
-      .update({ correct_answer: correctAnswer.trim() })
+      .update({ correct_answer: toSave })
       .eq('id', question.id)
 
     setSavingCorrect(false)
@@ -317,10 +354,21 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
 
     setSavingCorrect(false)
     if (!error) {
-      setCorrectAnswer('')
+      setCorrectAnswer(isMulti ? [] : '')
+      setPendingPick('')
       onUpdate()
     }
   }
+
+  // Conjunto normalizado das respostas corretas atuais (do banco) pra
+  // colorir respostas dos participantes que acertaram. Trata ambos
+  // os modos (single ou CSV) de forma uniforme.
+  const correctSet = new Set(
+    (question.correct_answer || '')
+      .split(',')
+      .map((s) => s.toLowerCase().trim())
+      .filter(Boolean)
+  )
 
   // Agrupa respostas por valor pra ver duplicatas
   const answerGroups = {}
@@ -331,6 +379,9 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
     answerGroups[key].responses.push(r)
   })
   const grouped = Object.values(answerGroups).sort((a, b) => b.count - a.count)
+
+  // Valor de saving disabled muda conforme modo
+  const canSave = isMulti ? correctAnswer.length > 0 : correctAnswer.trim().length > 0
 
   return (
     <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
@@ -347,10 +398,12 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
         {/* Resposta correta */}
         <div>
           <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold block mb-1.5">
-            Resposta correta
+            {isMulti ? 'Respostas corretas' : 'Resposta correta'}
           </label>
-          <div className="flex gap-2">
-            {question.answer_type === 'team' ? (
+
+          {/* MODO TEAM: dropdown único */}
+          {!isMulti && (
+            <div className="flex gap-2">
               <select
                 value={correctAnswer}
                 onChange={(e) => { setCorrectAnswer(e.target.value) }}
@@ -363,44 +416,114 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
                   <option key={t.id} value={t.name}>{t.name}</option>
                 ))}
               </select>
-            ) : (
-              <select
-                value={correctAnswer}
-                onChange={(e) => { setCorrectAnswer(e.target.value) }}
-                className="flex-1 min-w-0 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
-                  border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
-                  focus:outline-none appearance-none"
-              >
-                <option value="">Selecione o artilheiro...</option>
-                {PLAYERS.map((p) => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-            )}
-            <button
-              onClick={handleSaveCorrectAnswer}
-              disabled={savingCorrect || !correctAnswer.trim()}
-              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
-                bg-yellow-600 hover:bg-yellow-700 text-white
-                disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              {savingCorrect ? '...' : 'Salvar'}
-            </button>
-            {question.correct_answer && (
               <button
-                onClick={handleClearCorrectAnswer}
-                disabled={savingCorrect}
-                className="px-3 py-2 text-sm rounded-lg transition-colors
-                  bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
-                  border border-red-500/20 hover:border-red-500/40"
+                onClick={handleSaveCorrectAnswer}
+                disabled={savingCorrect || !canSave}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                  bg-yellow-600 hover:bg-yellow-700 text-white
+                  disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                Limpar
+                {savingCorrect ? '...' : 'Salvar'}
               </button>
-            )}
-          </div>
+              {question.correct_answer && (
+                <button
+                  onClick={handleClearCorrectAnswer}
+                  disabled={savingCorrect}
+                  className="px-3 py-2 text-sm rounded-lg transition-colors
+                    bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                    border border-red-500/20 hover:border-red-500/40"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* MODO PLAYER: multi-select com chips */}
+          {isMulti && (
+            <div className="space-y-2">
+              {/* Linha de adição: dropdown + botão Adicionar */}
+              <div className="flex gap-2">
+                <select
+                  value={pendingPick}
+                  onChange={(e) => { setPendingPick(e.target.value) }}
+                  className="flex-1 min-w-0 px-3 py-2 bg-gray-700/80 text-white text-sm rounded-lg
+                    border border-gray-600 focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30
+                    focus:outline-none appearance-none"
+                >
+                  <option value="">Selecione um artilheiro...</option>
+                  {PLAYERS
+                    .filter((p) => !correctAnswer.includes(p.name))
+                    .map((p) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))
+                  }
+                </select>
+                <button
+                  onClick={handleAddPick}
+                  disabled={!pendingPick}
+                  className="px-3 py-2 text-sm font-medium rounded-lg transition-colors
+                    bg-gray-700 hover:bg-gray-600 text-gray-200
+                    disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  + Adicionar
+                </button>
+              </div>
+
+              {/* Chips dos selecionados */}
+              {correctAnswer.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {correctAnswer.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md
+                        bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-xs font-medium"
+                    >
+                      {name}
+                      <button
+                        onClick={() => handleRemove(name)}
+                        className="text-yellow-400/70 hover:text-yellow-300 leading-none"
+                        aria-label={`Remover ${name}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Linha de ações: Salvar + Limpar */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveCorrectAnswer}
+                  disabled={savingCorrect || !canSave}
+                  className="flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                    bg-yellow-600 hover:bg-yellow-700 text-white
+                    disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {savingCorrect ? 'Salvando...' : `Salvar ${correctAnswer.length > 0 ? `(${correctAnswer.length})` : ''}`}
+                </button>
+                {question.correct_answer && (
+                  <button
+                    onClick={handleClearCorrectAnswer}
+                    disabled={savingCorrect}
+                    className="px-3 py-2 text-sm rounded-lg transition-colors
+                      bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                      border border-red-500/20 hover:border-red-500/40"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Indicador do que está salvo no banco */}
           {question.correct_answer && (
             <p className="text-green-400 text-xs mt-1.5">
-              ✓ Definida: {question.correct_answer}
+              ✓ {isMulti && question.correct_answer.includes(',')
+                ? `Definidas: ${question.correct_answer}`
+                : `Definida: ${question.correct_answer}`}
             </p>
           )}
         </div>
@@ -427,8 +550,7 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
                       </span>
 
                       <span className={`text-sm font-medium ${
-                        question.correct_answer &&
-                        resp.answer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()
+                        correctSet.has(resp.answer.toLowerCase().trim())
                           ? 'text-green-400'
                           : 'text-white'
                       }`}>
