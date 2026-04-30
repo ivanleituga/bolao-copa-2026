@@ -34,9 +34,9 @@ export default function Rules() {
             </thead>
             <tbody className="text-gray-300">
               <PointRow pts={15} label="Placar exato" example="Palpite 2×1, resultado 2×1" color="text-green-400" />
-              <PointRow pts={12} label="Vencedor + diferença de gols" example="Palpite 3×1, resultado 2×0 (diferença de 2)" />
+              <PointRow pts={11} label="Vencedor + diferença de gols" example="Palpite 3×1, resultado 2×0 (diferença de 2)" />
               <PointRow pts={9} label="Vencedor + gols de um time" example="Palpite 2×1, resultado 2×0 (gols do vencedor) ou 3×1 (gols do perdedor)" />
-              <PointRow pts={6} label="Apenas o vencedor" example="Palpite 2×1, resultado 3×0" />
+              <PointRow pts={7} label="Apenas o vencedor" example="Palpite 2×1, resultado 3×0" />
             </tbody>
           </table>
         </Section>
