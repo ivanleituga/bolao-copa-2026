@@ -5,6 +5,8 @@ import { useMatchesAndPredictions } from '../hooks/useMatchesAndPredictions'
 import MatchCard from '../components/MatchCard'
 import { TeamFlag } from '../components/TeamFlag'
 import SpecialPredictions from '../components/SpecialPredictions'
+import KnockoutBracket from '../components/KnockoutBracket'
+
 
 /* ═══════════════════════════════════════════════════
    Helpers específicos da tela de grupos
@@ -319,6 +321,14 @@ export default function Groups({ userId }) {
           />
         ))}
       </div>
+      <div className="flex items-center gap-2 mt-8 mb-4">
+        <div className="h-px flex-1 bg-gray-700/50" />
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+          Mata-Mata
+        </h2>
+        <div className="h-px flex-1 bg-gray-700/50" />
+      </div>
+      <KnockoutBracket />
     </div>
   )
 }
