@@ -33,33 +33,9 @@ const ROUND_LABELS = {
    Metade B (direita) afunila pra Semi 2 (M102 = W99 × W100)
      QF3 (M99 = W91×W92) ← M91 (W76×W78) + M92 (W79×W80)
      QF4 (M100 = W95×W96) ← M95 (W86×W88) + M96 (W85×W87)
-
-   Pra exibir cada match correto na posição certa, mapeamos por
-   placeholder. M73 é 2A×2B, M89 é W73×W75... então o card de
-   "W73 × W75" deve aparecer alinhado entre os cards W73 e W75
-   da coluna anterior.
    ═══════════════════════════════════════════════════ */
 
-// Ordem visual dos 16avos na metade A (esquerda), de cima pra baixo
-// É a ordem que faz com que afunilem aos pares pras oitavas certas.
-//
-// M89 = W74 × W77 → mas pelo cronograma, W74 vem antes que W77,
-// então o card de M89 fica entre os 16avos M74 e M77.
-//
-// Pra que isso funcione visualmente, os 16avos da esquerda devem
-// estar ordenados assim:
-//   M74, M77 (que afunilam pra M89)
-//   M73, M75 (que afunilam pra M90)
-//   M83, M84 (que afunilam pra M93)
-//   M81, M82 (que afunilam pra M94)
-//
-// E os da direita:
-//   M76, M78 (afunilam pra M91)
-//   M79, M80 (afunilam pra M92)
-//   M86, M88 (afunilam pra M95)
-//   M85, M87 (afunilam pra M96)
 const BRACKET_STRUCTURE = {
-  // Cada metade lista os match numbers de cada fase, de cima pra baixo
   left: {
     round_of_32: ['M74', 'M77', 'M73', 'M75', 'M83', 'M84', 'M81', 'M82'],
     round_of_16: ['M89', 'M90', 'M93', 'M94'],
@@ -74,12 +50,7 @@ const BRACKET_STRUCTURE = {
   },
 }
 
-/**
- * Inverse-lookup: dado placeholder ("2A", "1E"...) acha o match number ("M73", "M74"...)
- * Construído estaticamente porque é a estrutura oficial FIFA.
- */
 const PLACEHOLDER_TO_MATCH_NUMBER = {
-  // 16avos
   '2A×2B': 'M73',
   '1E×3ABCDF': 'M74',
   '1F×2C': 'M75',
@@ -98,17 +69,11 @@ const PLACEHOLDER_TO_MATCH_NUMBER = {
   '2D×2G': 'M88',
 }
 
-/**
- * Identifica um match pelo "número" (M73...M104) a partir dos
- * placeholders/identificadores armazenados.
- */
 function getMatchNumber(match) {
-  // Pros 16avos: identifica pela combinação de placeholders
   if (match.round === 'round_of_32') {
     const key = `${match.home_placeholder}×${match.away_placeholder}`
     return PLACEHOLDER_TO_MATCH_NUMBER[key]
   }
-  // Pras oitavas: placeholder vira "W73×W75" → M90
   if (match.round === 'round_of_16') {
     const key = `${match.home_placeholder}×${match.away_placeholder}`
     const lookup = {
@@ -123,7 +88,6 @@ function getMatchNumber(match) {
     }
     return lookup[key]
   }
-  // Pras quartas: W89×W90 → M97
   if (match.round === 'quarter') {
     const key = `${match.home_placeholder}×${match.away_placeholder}`
     const lookup = {
@@ -134,7 +98,6 @@ function getMatchNumber(match) {
     }
     return lookup[key]
   }
-  // Semis: W97×W98 → M101, W99×W100 → M102
   if (match.round === 'semi') {
     const key = `${match.home_placeholder}×${match.away_placeholder}`
     if (key === 'W97×W98') return 'M101'
@@ -242,8 +205,7 @@ function KnockoutCard({ match, compact = false }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   BracketColumn — uma coluna do tree com cards centralizados
-   por justify-around (afunilamento visual sem linhas)
+   BracketColumn — uma coluna do tree
    ═══════════════════════════════════════════════════ */
 
 function BracketColumn({ label, matches, matchByNumber }) {
@@ -266,8 +228,42 @@ function BracketColumn({ label, matches, matchByNumber }) {
 }
 
 /* ═══════════════════════════════════════════════════
+   CenterFinalColumn — coluna central com Final + 3º lugar
+   Ocupa o lugar de uma coluna intermediária entre as duas Semis
+   ═══════════════════════════════════════════════════ */
+
+function CenterFinalColumn({ matchByNumber }) {
+  const final = matchByNumber['M104']
+  const thirdPlace = matchByNumber['M103']
+
+  return (
+    <div className="flex flex-col min-w-0">
+      {/* Header invisível pra alinhar verticalmente com as outras colunas */}
+      <h4 className="text-[10px] font-bold text-transparent uppercase tracking-widest text-center mb-2 select-none">
+        .
+      </h4>
+      {/* Empilha Final centralizada verticalmente + 3º lugar logo abaixo */}
+      <div className="flex-1 flex flex-col justify-center gap-3">
+        <div>
+          <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest text-center mb-1.5">
+            🏆 Final
+          </p>
+          <KnockoutCard match={final} compact />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-1.5">
+            3º lugar
+          </p>
+          <KnockoutCard match={thirdPlace} compact />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════
    DesktopBracket — layout tree clássico
-   Esquerda → Centro (Semi/Final/3º) → Direita
+   Esquerda → Final central → Direita
    ═══════════════════════════════════════════════════ */
 
 function DesktopBracket({ matchByNumber }) {
@@ -275,7 +271,8 @@ function DesktopBracket({ matchByNumber }) {
     <div className="hidden md:block">
       <div className="grid gap-2 items-stretch"
            style={{
-             gridTemplateColumns: '1fr 0.9fr 0.8fr 0.9fr 0.9fr 0.8fr 0.9fr 1fr',
+             // 9 colunas: 4 da esquerda + 1 central (Final/3º) + 4 da direita
+             gridTemplateColumns: '1fr 0.9fr 0.8fr 0.9fr 1.05fr 0.9fr 0.8fr 0.9fr 1fr',
            }}
       >
         {/* === METADE A (ESQUERDA) === */}
@@ -300,6 +297,9 @@ function DesktopBracket({ matchByNumber }) {
           matchByNumber={matchByNumber}
         />
 
+        {/* === COLUNA CENTRAL: FINAL + 3º LUGAR === */}
+        <CenterFinalColumn matchByNumber={matchByNumber} />
+
         {/* === METADE B (DIREITA) === */}
         <BracketColumn
           label="Semi"
@@ -322,28 +322,12 @@ function DesktopBracket({ matchByNumber }) {
           matchByNumber={matchByNumber}
         />
       </div>
-
-      {/* === FINAL + 3º LUGAR (embaixo do tree, centralizados) === */}
-      <div className="mt-6 grid grid-cols-2 gap-3 max-w-md mx-auto">
-        <div>
-          <h4 className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest text-center mb-2">
-            🏆 Final
-          </h4>
-          <KnockoutCard match={matchByNumber['M104']} compact={false} />
-        </div>
-        <div>
-          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">
-            3º lugar
-          </h4>
-          <KnockoutCard match={matchByNumber['M103']} compact={false} />
-        </div>
-      </div>
     </div>
   )
 }
 
 /* ═══════════════════════════════════════════════════
-   MobileBracket — accordion por fase (como antes)
+   MobileBracket — accordion por fase
    ═══════════════════════════════════════════════════ */
 
 function MobileAccordion({ round, matches, isOpen, onToggle }) {
@@ -456,14 +440,12 @@ export default function KnockoutBracket() {
     )
   }
 
-  // Indexa matches por "número M" (M73...M104) pro DesktopBracket usar posicionalmente
   const matchByNumber = {}
   matches.forEach((m) => {
     const num = getMatchNumber(m)
     if (num) matchByNumber[num] = m
   })
 
-  // Agrupa por round pro MobileBracket
   const matchesByRound = {}
   matches.forEach((m) => {
     if (!matchesByRound[m.round]) matchesByRound[m.round] = []

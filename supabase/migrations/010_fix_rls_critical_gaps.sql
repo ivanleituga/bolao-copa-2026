@@ -21,10 +21,10 @@
 -- Correções:
 --   1. Dropa explicitamente o nome correto da policy antiga em
 --      special_predictions, garantindo que só a restritiva fica ativa.
---   2. Adiciona trigger BEFORE UPDATE em profiles que bloqueia
---      qualquer tentativa de não-admin alterar is_admin. Mantém edição
---      normal de display_name, email, etc. Admin segue podendo alterar
---      (via SQL Editor com bypass, ou via outra policy futura).
+--   2. Adiciona trigger BEFORE UPDATE em profiles que IMPEDE
+--      qualquer tentativa de não-admin alterar is_admin, com erro
+--      explícito (RAISE EXCEPTION). Mantém edição normal de
+--      display_name, email, etc. Admin segue podendo alterar.
 -- ============================================================
 
 -- ============================================================
@@ -42,36 +42,61 @@ DROP POLICY IF EXISTS "Respostas visíveis para todos logados"
 -- PARTE 2: Trigger pra impedir escalação de privilégio
 -- ============================================================
 -- O trigger roda BEFORE UPDATE em profiles. Se um usuário não-admin
--- tentar alterar is_admin, o trigger reverte essa coluna pro valor
--- antigo (silenciosamente — não quebra a transação). Outras colunas
--- continuam editáveis.
+-- tentar alterar is_admin, o trigger ABORTA o UPDATE com erro explícito.
+-- Outras colunas continuam editáveis.
 --
--- Por que trigger e não RLS? RLS opera no nível de linha, não de
--- coluna. Pra restringir colunas específicas, trigger é o caminho
--- padrão no Postgres. Alternativa seria revogar UPDATE coluna por
--- coluna via GRANT, mas é mais frágil.
+-- Detalhes da implementação:
+--
+-- 1. SET search_path = public: padrão de segurança usado em todas as
+--    funções SECURITY DEFINER deste projeto (handle_new_user no 001,
+--    update_knockout_match no 004). Sem isso, alguém com privilégio
+--    de criar objetos em outros schemas poderia atacar via path
+--    hijacking.
+--
+-- 2. Trata auth.uid() NULL como contexto administrativo: quando admin
+--    roda UPDATE no SQL Editor (ou via service_role), auth.uid() é
+--    NULL. O trigger libera nesse caso, permitindo manutenção manual
+--    sem ficar travado.
+--
+-- 3. RAISE EXCEPTION em vez de reversão silenciosa: dá erro claro
+--    quando alguém tenta escalar. Se o frontend tentar (por bug ou
+--    má fé), recebe erro explícito em vez de "salvou" mentiroso.
+--
+-- 4. Por que trigger e não RLS? RLS opera no nível de linha. Pra
+--    restringir colunas específicas, trigger é o padrão Postgres.
 
 CREATE OR REPLACE FUNCTION prevent_self_admin_escalation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
+  caller_id UUID;
   caller_is_admin BOOLEAN;
 BEGIN
-  -- Se is_admin não mudou, libera o update sem checar nada
+  -- Se is_admin não mudou, libera normalmente
   IF OLD.is_admin IS NOT DISTINCT FROM NEW.is_admin THEN
     RETURN NEW;
   END IF;
 
-  -- Verifica se quem está fazendo o UPDATE é admin
-  SELECT is_admin INTO caller_is_admin
-    FROM profiles
-    WHERE id = (SELECT auth.uid());
+  caller_id := auth.uid();
 
-  -- Não-admin tentando mudar is_admin: reverte silenciosamente
+  -- Se não há auth.uid(), é contexto administrativo direto
+  -- (SQL Editor/service_role). Permite — admin precisa poder
+  -- promover/rebaixar manualmente.
+  IF caller_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT is_admin INTO caller_is_admin
+  FROM profiles
+  WHERE id = caller_id;
+
+  -- Não-admin tentando mudar is_admin: bloqueia com erro explícito
   IF caller_is_admin IS NOT TRUE THEN
-    NEW.is_admin := OLD.is_admin;
+    RAISE EXCEPTION 'Usuário não pode alterar is_admin'
+      USING ERRCODE = '42501';
   END IF;
 
   RETURN NEW;
@@ -99,8 +124,10 @@ CREATE TRIGGER prevent_self_admin_escalation_trigger
 --   SET LOCAL ROLE authenticated;
 --   SET LOCAL "request.jwt.claims" TO '{"sub":"UUID-USUARIO-COMUM","role":"authenticated"}';
 --   UPDATE profiles SET is_admin = TRUE WHERE id = (SELECT auth.uid());
---   -- Não dá erro, mas:
---   SELECT is_admin FROM profiles WHERE id = (SELECT auth.uid());
---   -- Esperado: continua FALSE. O trigger reverteu silenciosamente.
+--   -- Esperado: ERRO "Usuário não pode alterar is_admin" (código 42501)
 --   RESET ROLE;
+--
+-- FALHA 2 (admin no SQL Editor) — deve continuar funcionando:
+--   UPDATE profiles SET is_admin = TRUE WHERE display_name = 'Algum Nome';
+--   -- Esperado: sucesso. auth.uid() é NULL no SQL Editor, libera passagem.
 -- ============================================================
