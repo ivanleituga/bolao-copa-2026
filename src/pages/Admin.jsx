@@ -4,6 +4,7 @@ import { getRoundLabel } from '../lib/scoring'
 import { PLAYERS } from '../lib/players'
 import { TeamFlag } from '../components/TeamFlag'
 import AdminKnockoutCard from '../components/AdminKnockoutCard'
+import MissingParticipantsBlock from '../components/MissingParticipantsBlock'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -186,44 +187,55 @@ function AdminMatchCard({ match, onResult, onReset }) {
           </div>
         </div>
 
-        {/* Erro */}
-        {error && (
-          <p className="text-red-400 text-xs text-center mt-3">{error}</p>
-        )}
+        {/* Ações */}
+        <div className="mt-4">
+          {error && (
+            <p className="text-center text-red-400 text-xs mb-2">{error}</p>
+          )}
 
-        {/* Botões */}
-        <div className="mt-4 space-y-2">
-          {!confirming && !confirmingReset && (
-            <>
+          {!confirming && !confirmingReset && !isFinished && (
+            <button
+              onClick={handleSubmit}
+              disabled={!hasInput}
+              className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors
+                bg-yellow-600 hover:bg-yellow-700 text-white
+                disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Registrar resultado
+            </button>
+          )}
+
+          {!confirming && !confirmingReset && isFinished && (
+            <div className="flex gap-2">
               <button
                 onClick={handleSubmit}
                 disabled={!hasInput}
-                className="w-full py-2.5 text-sm font-semibold rounded-lg transition-colors
-                  disabled:opacity-30 disabled:cursor-not-allowed
-                  bg-yellow-600 hover:bg-yellow-700 text-white"
+                className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors
+                  bg-gray-700 hover:bg-gray-600 text-gray-200
+                  disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {isFinished ? 'Corrigir resultado' : 'Registrar resultado'}
+                Corrigir
               </button>
-              {isFinished && (
-                <button
-                  onClick={() => { setConfirmingReset(true); setError(null) }}
-                  className="w-full py-2 text-xs font-medium rounded-lg transition-colors
-                    bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
-                    border border-red-500/20 hover:border-red-500/40"
-                >
-                  Excluir resultado
-                </button>
-              )}
-            </>
+              <button
+                onClick={() => setConfirmingReset(true)}
+                className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors
+                  bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                  border border-red-500/20 hover:border-red-500/40"
+              >
+                Excluir resultado
+              </button>
+            </div>
           )}
 
           {confirming && (
             <div className="space-y-2">
               <p className="text-center text-yellow-400 text-xs font-medium">
-                Confirma {match.home_team.name} {parseInt(home)} × {parseInt(away)} {match.away_team.name}?
+                Confirmar: {match.home_team.name} {home} × {away} {match.away_team.name}?
               </p>
               <p className="text-center text-gray-500 text-[10px]">
-                Isso recalcula os pontos de todos os participantes.
+                {isFinished
+                  ? 'A correção vai recalcular os pontos automaticamente.'
+                  : 'Os pontos dos palpiteiros serão calculados automaticamente.'}
               </p>
               <div className="flex gap-2">
                 <button
@@ -284,13 +296,20 @@ function AdminMatchCard({ match, onResult, onReset }) {
 
 /* ═══════════════════════════════════════════════════
    SpecialQuestionsAdmin — gerenciamento das perguntas especiais
+
+   Privacidade das respostas dos participantes:
+   - Antes do deadline E sem correct_answer definida: o admin vê só
+     a participação (quem respondeu / quem falta), SEM ver respostas.
+   - Depois do deadline OU com correct_answer definida: revela as
+     respostas agrupadas como antes.
+
+   Usa a RPC special_question_participation pra contar participação
+   sem violar a RLS.
    ═══════════════════════════════════════════════════ */
 
-function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
+function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpdate }) {
   const isMulti = question.answer_type === 'player'
 
-  // Parse inicial: se já tem correct_answer salvo, transforma em array
-  // pra modo multi, ou mantém como string pra modo single.
   const parseInitial = (val) => {
     if (!val) return isMulti ? [] : ''
     if (isMulti) {
@@ -300,10 +319,28 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
   }
 
   const [correctAnswer, setCorrectAnswer] = useState(parseInitial(question.correct_answer))
-  const [pendingPick, setPendingPick] = useState('')  // nome no dropdown ainda não adicionado
+  const [pendingPick, setPendingPick] = useState('')
   const [savingCorrect, setSavingCorrect] = useState(false)
 
-  // Adiciona o nome do dropdown à lista (multi). Evita duplicatas.
+  // Participação via RPC (sempre acessível, sem violar RLS)
+  const [participatedIds, setParticipatedIds] = useState(new Set())
+  const [participationLoaded, setParticipationLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchParticipation = async () => {
+      const { data, error } = await supabase
+        .rpc('special_question_participation', { p_question_id: question.id })
+      if (cancelled) return
+      if (!error && data) {
+        setParticipatedIds(new Set(data.map((row) => row.user_id)))
+      }
+      setParticipationLoaded(true)
+    }
+    fetchParticipation()
+    return () => { cancelled = true }
+  }, [question.id, question.correct_answer])
+
   const handleAddPick = () => {
     if (!pendingPick) return
     if (correctAnswer.includes(pendingPick)) {
@@ -314,7 +351,6 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
     setPendingPick('')
   }
 
-  // Remove um chip da lista (multi)
   const handleRemove = (name) => {
     setCorrectAnswer(correctAnswer.filter((n) => n !== name))
   }
@@ -360,9 +396,6 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
     }
   }
 
-  // Conjunto normalizado das respostas corretas atuais (do banco) pra
-  // colorir respostas dos participantes que acertaram. Trata ambos
-  // os modos (single ou CSV) de forma uniforme.
   const correctSet = new Set(
     (question.correct_answer || '')
       .split(',')
@@ -370,7 +403,13 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
       .filter(Boolean)
   )
 
-  // Agrupa respostas por valor pra ver duplicatas
+  // Decide se mostra respostas individuais ou só participação
+  const deadlineMs = question.deadline ? new Date(question.deadline).getTime() : 0
+  const deadlinePassed = deadlineMs > 0 && deadlineMs <= now
+  const hasCorrectAnswer = !!question.correct_answer
+  const showResponses = deadlinePassed || hasCorrectAnswer
+
+  // Agrupamento das respostas (só usado quando showResponses === true)
   const answerGroups = {}
   responses.forEach((r) => {
     const key = r.answer.toLowerCase().trim()
@@ -380,7 +419,9 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
   })
   const grouped = Object.values(answerGroups).sort((a, b) => b.count - a.count)
 
-  // Valor de saving disabled muda conforme modo
+  // Lista de não-respondentes pra MissingParticipantsBlock
+  const missing = (allUsers || []).filter((u) => !participatedIds.has(u.id))
+
   const canSave = isMulti ? correctAnswer.length > 0 : correctAnswer.trim().length > 0
 
   return (
@@ -518,7 +559,6 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
             </div>
           )}
 
-          {/* Indicador do que está salvo no banco */}
           {question.correct_answer && (
             <p className="text-green-400 text-xs mt-1.5">
               ✓ {isMulti && question.correct_answer.includes(',')
@@ -528,39 +568,60 @@ function SpecialQuestionAdmin({ question, responses, teams, onUpdate }) {
           )}
         </div>
 
-        {/* Respostas dos participantes */}
+        {/* Participação / Respostas */}
         <div>
           <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold block mb-1.5">
-            Respostas ({responses.length} participantes)
+            {showResponses ? 'Respostas dos participantes' : 'Participação'}
           </label>
 
-          {grouped.length === 0 ? (
-            <p className="text-gray-600 text-xs">Nenhuma resposta ainda.</p>
-          ) : (
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {grouped.map((group) => (
-                <div key={group.answer} className="space-y-1">
-                  {group.responses.map((resp) => (
-                    <div
-                      key={resp.id}
-                      className="flex items-center justify-between py-1.5 px-3 bg-gray-900/40 rounded-lg"
-                    >
-                      <span className="text-gray-400 text-xs truncate flex-1 min-w-0">
-                        {resp.display_name?.split('@')[0]}
-                      </span>
+          {!showResponses && (
+            <>
+              {!participationLoaded ? (
+                <p className="text-gray-500 text-xs italic">Carregando participação...</p>
+              ) : (
+                <MissingParticipantsBlock
+                  total={(allUsers || []).length}
+                  missing={missing}
+                  label="respondeu"
+                />
+              )}
+              <p className="text-[10px] text-gray-600 italic mt-2">
+                As respostas individuais aparecem após o prazo da pergunta ou após você definir a resposta correta.
+              </p>
+            </>
+          )}
 
-                      <span className={`text-sm font-medium ${
-                        correctSet.has(resp.answer.toLowerCase().trim())
-                          ? 'text-green-400'
-                          : 'text-white'
-                      }`}>
-                        {resp.answer}
-                      </span>
+          {showResponses && (
+            <>
+              {grouped.length === 0 ? (
+                <p className="text-gray-600 text-xs">Nenhuma resposta recebida.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {grouped.map((group) => (
+                    <div key={group.answer} className="space-y-1">
+                      {group.responses.map((resp) => (
+                        <div
+                          key={resp.id}
+                          className="flex items-center justify-between py-1.5 px-3 bg-gray-900/40 rounded-lg"
+                        >
+                          <span className="text-gray-400 text-xs truncate flex-1 min-w-0">
+                            {resp.display_name?.split('@')[0]}
+                          </span>
+
+                          <span className={`text-sm font-medium ${
+                            correctSet.has(resp.answer.toLowerCase().trim())
+                              ? 'text-green-400'
+                              : 'text-white'
+                          }`}>
+                            {resp.answer}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -577,6 +638,7 @@ export default function Admin() {
   const [teams, setTeams] = useState([])
   const [specialQuestions, setSpecialQuestions] = useState([])
   const [specialResponses, setSpecialResponses] = useState({})
+  const [allUsers, setAllUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [now, setNow] = useState(() => Date.now())
@@ -586,19 +648,16 @@ export default function Admin() {
   const [predictionsCount, setPredictionsCount] = useState({})
 
   const fetchSpecial = async () => {
-    const { data: questions } = await supabase
-      .from('special_questions')
-      .select('*')
-      .order('id')
+    const [questionsRes, predsRes, profilesRes] = await Promise.all([
+      supabase.from('special_questions').select('*').order('id'),
+      supabase.from('special_predictions').select('*'),
+      supabase.from('profiles').select('id, display_name').order('display_name'),
+    ])
 
-    setSpecialQuestions(questions || [])
+    setSpecialQuestions(questionsRes.data || [])
+    setAllUsers(profilesRes.data || [])
 
-    if (questions && questions.length > 0) {
-      const [predsRes, profilesRes] = await Promise.all([
-        supabase.from('special_predictions').select('*'),
-        supabase.from('profiles').select('id, display_name'),
-      ])
-
+    if (questionsRes.data && questionsRes.data.length > 0) {
       const profilesMap = {}
       if (profilesRes.data) {
         profilesRes.data.forEach((p) => { profilesMap[p.id] = p.display_name })
@@ -696,9 +755,6 @@ export default function Admin() {
   }
 
   // Callback quando admin define OU altera os times de um match de mata-mata.
-  // Além de atualizar o match (home_team/away_team), zera o count de palpites
-  // desse match no state local (o RPC já deletou no banco) pra refletir
-  // imediatamente na UI.
   const handleKnockoutSave = (matchId, homeId, awayId, deletedCount) => {
     const home = teams.find((t) => t.id === homeId)
     const away = teams.find((t) => t.id === awayId)
@@ -715,7 +771,6 @@ export default function Admin() {
           : m
       )
     )
-    // Se deletou palpites, zera o count desse match
     if (deletedCount > 0) {
       setPredictionsCount((prev) => ({ ...prev, [matchId]: 0 }))
     }
@@ -732,7 +787,6 @@ export default function Admin() {
     )
   }
 
-  // Pending: jogos com times definidos e não finalizados
   const pending = matches.filter(
     (m) => m.status !== 'finished' && m.home_team != null && m.away_team != null
   )
@@ -740,10 +794,6 @@ export default function Admin() {
     .filter((m) => m.status === 'finished')
     .sort((a, b) => new Date(b.kickoff_time) - new Date(a.kickoff_time))
 
-  // "Definir mata-mata": apenas matches EDITÁVEIS — scheduled + kickoff no futuro.
-  // Inclui tanto placeholders (sem times) quanto já definidos (editáveis).
-  // Não aparecem aqui: jogos que já começaram (caem em "aguardando" ou
-  // "finalizados") nem jogos de grupos (esses não têm placeholder).
   const editableKnockout = matches.filter(
     (m) =>
       m.round !== 'group' &&
@@ -784,6 +834,8 @@ export default function Admin() {
                 question={q}
                 responses={specialResponses[q.id] || []}
                 teams={teams}
+                allUsers={allUsers}
+                now={now}
                 onUpdate={fetchSpecial}
               />
             ))}

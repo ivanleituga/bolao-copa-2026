@@ -9,30 +9,28 @@ import { supabase } from '../lib/supabase'
  * Carrega só quando matchId estiver definido (lazy — só dispara quando
  * o modal abre). Se matchId for null, fica em estado "ocioso" sem fetch.
  *
- * IMPLEMENTAÇÃO: faz 2 queries em paralelo (predictions + profiles) e
- * mescla os display_names no JS. NÃO usa JOIN aninhado do PostgREST
- * porque a FK predictions.user_id → auth.users(id), não → profiles(id).
- * O PostgREST não consegue inferir essa relação automaticamente.
+ * IMPLEMENTAÇÃO: faz queries em paralelo (predictions + profiles +
+ * match_participation via RPC) e mescla no JS. NÃO usa JOIN aninhado
+ * do PostgREST porque a FK predictions.user_id → auth.users(id),
+ * não → profiles(id). O PostgREST não consegue inferir essa relação.
+ *
+ * IMPORTANTE: a RLS de predictions só retorna palpites visíveis ao
+ * caller (próprio + jogos iniciados/finalizados + admin vê tudo).
+ * Pra jogo não iniciado, a tabela direta retorna só o próprio palpite,
+ * o que inflaria o `missing` artificialmente. Pra evitar isso, usamos
+ * a RPC `match_participation(match_id)` que retorna user_ids de quem
+ * palpitou sem revelar placares — funciona em qualquer estado do jogo.
  *
  * Retorno:
- *   - predictions: array de { user_id, home_score, away_score, points,
- *                  display_name }
- *   - allUsers: array de { id, display_name } (todos os usuários do bolão)
- *   - missing: array de { id, display_name } — quem NÃO palpitou
+ *   - predictions: array de palpites visíveis (só após início do jogo)
+ *   - allUsers: array de todos os usuários do bolão
+ *   - missing: array de quem NÃO palpitou (sempre correto, via RPC)
  *   - loading, error
- *
- * IMPORTANTE: a RLS de predictions só retorna o que o usuário pode ver:
- * - Próprios palpites (sempre)
- * - Palpites alheios apenas se o jogo já começou OU foi finalizado
- * - Tudo, se for admin
- *
- * Pra jogo não iniciado, esse hook vai retornar só o palpite do próprio
- * usuário (se ele palpitou). O modal interpreta isso como "ainda não há
- * palpites públicos pra mostrar".
  */
 export function usePredictionsByMatch(matchId) {
   const [predictions, setPredictions] = useState([])
   const [allUsers, setAllUsers] = useState([])
+  const [participatedIds, setParticipatedIds] = useState(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -45,19 +43,29 @@ export function usePredictionsByMatch(matchId) {
       setLoading(true)
       setError(null)
 
-      // Busca palpites desse match (sem JOIN aninhado — só os campos da tabela)
+      // 3 queries em paralelo:
+      //   - palpites do jogo (filtrado pela RLS — pode vir parcial)
+      //   - todos os perfis (pra montar a lista completa)
+      //   - RPC de participação (lista completa de quem palpitou,
+      //     mesmo quando RLS oculta os palpites)
       const predsPromise = supabase
         .from('predictions')
         .select('user_id, home_score, away_score, points')
         .eq('match_id', matchId)
 
-      // Busca todos os perfis (id + display_name)
       const usersPromise = supabase
         .from('profiles')
         .select('id, display_name')
         .order('display_name')
 
-      const [predsRes, usersRes] = await Promise.all([predsPromise, usersPromise])
+      const participationPromise = supabase
+        .rpc('match_participation', { p_match_id: matchId })
+
+      const [predsRes, usersRes, partRes] = await Promise.all([
+        predsPromise,
+        usersPromise,
+        participationPromise,
+      ])
 
       if (cancelled) return
 
@@ -73,14 +81,16 @@ export function usePredictionsByMatch(matchId) {
         setLoading(false)
         return
       }
+      if (partRes.error) {
+        console.error('Erro ao buscar participação:', partRes.error)
+        // Não fatal: continuamos com base só nas predictions visíveis
+      }
 
-      // Indexa profiles por id pra fazer lookup rápido (O(1) por palpite)
       const profileById = {}
       ;(usersRes.data || []).forEach((p) => {
         profileById[p.id] = p.display_name
       })
 
-      // Merge: enriquece cada palpite com o display_name do dono
       const enriched = (predsRes.data || []).map((p) => ({
         user_id: p.user_id,
         home_score: p.home_score,
@@ -89,8 +99,12 @@ export function usePredictionsByMatch(matchId) {
         display_name: profileById[p.user_id] || '',
       }))
 
+      // Set de user_ids que palpitaram (via RPC, sempre correto)
+      const ids = new Set((partRes.data || []).map((row) => row.user_id))
+
       setPredictions(enriched)
       setAllUsers(usersRes.data || [])
+      setParticipatedIds(ids)
       setLoading(false)
     }
 
@@ -98,9 +112,10 @@ export function usePredictionsByMatch(matchId) {
     return () => { cancelled = true }
   }, [matchId])
 
-  // Calcula quem não palpitou
-  const predictedUserIds = new Set(predictions.map((p) => p.user_id))
-  const missing = allUsers.filter((u) => !predictedUserIds.has(u.id))
+  // missing usa o set vindo da RPC, não a lista filtrada de predictions
+  const missing = allUsers.filter((u) => !participatedIds.has(u.id))
+  // contagem total real de participação (não depende da RLS)
+  const participatedCount = participatedIds.size
 
-  return { predictions, allUsers, missing, loading, error }
+  return { predictions, allUsers, missing, participatedCount, loading, error }
 }

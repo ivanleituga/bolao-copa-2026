@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { usePredictionsByMatch } from '../hooks/usePredictionsByMatch'
 import { TeamFlag } from './TeamFlag'
 import { getPointsColor, MULTIPLIERS } from '../lib/scoring'
+import MissingParticipantsBlock from './MissingParticipantsBlock'
 
 /* ═══════════════════════════════════════════════════
    Helpers
@@ -81,26 +82,16 @@ function PredictionRow({ prediction, isFinished, multiplier, isMe }) {
    ═══════════════════════════════════════════════════ */
 
 export default function MatchPredictionsModal({ match, currentUserId, now, onClose }) {
-  // Hook: passa null pra não fazer fetch antes de ter match
-  const { predictions, missing, loading } = usePredictionsByMatch(match?.id ?? null)
+  const { predictions, allUsers, missing, loading } = usePredictionsByMatch(match?.id ?? null)
 
-  // Estado do jogo:
-  //   - placeholder: jogo de mata-mata sem times definidos (não deveria abrir, mas defendemos)
-  //   - notStarted: kickoff > now
-  //   - inProgress: kickoff <= now mas status != finished
-  //   - finished: status === 'finished'
   const isPlaceholder = !match?.home_team || !match?.away_team
   const kickoffMs = match ? new Date(match.kickoff_time).getTime() : 0
   const isFinished = match?.status === 'finished' && match?.home_score != null
   const isInProgress = !isFinished && kickoffMs <= now
   const isNotStarted = !isFinished && !isInProgress
 
-  // Multiplicador da fase pra calcular cor dos pontos
   const multiplier = MULTIPLIERS[match?.round] ?? 1
 
-  // Ordenação:
-  //   - Finalizado: pontos desc, depois alfabética como tiebreak
-  //   - Em andamento: alfabética
   const sortedPredictions = [...predictions].sort((a, b) => {
     if (isFinished) {
       const ptsDiff = (b.points ?? 0) - (a.points ?? 0)
@@ -109,11 +100,9 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
     return (a.display_name || '').localeCompare(b.display_name || '')
   })
 
-  // Fecha modal com Escape
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
-    // Trava scroll do body enquanto modal aberto
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -151,7 +140,6 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
 
           {!isPlaceholder ? (
             <div className="flex items-center justify-center gap-3">
-              {/* Casa */}
               <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
                 <span className="text-white text-sm font-bold truncate text-right">
                   {match.home_team?.name}
@@ -159,7 +147,6 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
                 <TeamFlag code={match.home_team?.code} size={26} />
               </div>
 
-              {/* Placar ou X */}
               <div className="flex-shrink-0 px-3 py-1 bg-gray-700/40 rounded-lg">
                 {isFinished ? (
                   <div className="flex items-center gap-2">
@@ -176,7 +163,6 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
                 )}
               </div>
 
-              {/* Visitante */}
               <div className="flex-1 flex items-center gap-2 min-w-0">
                 <TeamFlag code={match.away_team?.code} size={26} />
                 <span className="text-white text-sm font-bold truncate">
@@ -226,17 +212,31 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
             </div>
           )}
 
-          {/* Caso 2: jogo não iniciado — palpites alheios bloqueados pela RLS */}
+          {/* Caso 2: jogo não iniciado — mostra só participação */}
           {!isPlaceholder && isNotStarted && (
-            <div className="py-8 text-center">
-              <div className="text-3xl mb-2">⏱</div>
-              <p className="text-gray-300 text-sm font-medium mb-1">
-                Os palpites ficam visíveis quando o jogo começar.
-              </p>
-              <p className="text-gray-500 text-xs">
-                Volte aqui no horário pra ver o que o pessoal arriscou.
-              </p>
-            </div>
+            <>
+              {loading ? (
+                <div className="py-8 text-center">
+                  <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  <p className="text-gray-500 text-xs">Carregando...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 text-center">
+                    <div className="text-2xl mb-1">⏱</div>
+                    <p className="text-gray-400 text-xs">
+                      Os palpites ficam visíveis quando o jogo começar.
+                    </p>
+                  </div>
+
+                  <MissingParticipantsBlock
+                    total={allUsers.length}
+                    missing={missing}
+                    label="palpitou"
+                  />
+                </>
+              )}
+            </>
           )}
 
           {/* Caso 3 e 4: jogo iniciado ou finalizado */}
@@ -249,7 +249,6 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
                 </div>
               ) : (
                 <>
-                  {/* Lista de palpites */}
                   {sortedPredictions.length > 0 && (
                     <div className="space-y-1.5 mb-4">
                       <div className="flex items-center justify-between mb-2 px-1">
@@ -272,7 +271,6 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
                     </div>
                   )}
 
-                  {/* Sem palpites */}
                   {sortedPredictions.length === 0 && (
                     <div className="py-6 text-center mb-4">
                       <p className="text-gray-500 text-sm italic">
@@ -281,7 +279,7 @@ export default function MatchPredictionsModal({ match, currentUserId, now, onClo
                     </div>
                   )}
 
-                  {/* Quem não palpitou */}
+                  {/* Quem não palpitou (após início) */}
                   {missing.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">

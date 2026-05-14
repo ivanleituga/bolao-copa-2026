@@ -29,12 +29,6 @@ function formatDeadline(iso) {
   return `${dd}/${mm} às ${hh}:${min}`
 }
 
-/**
- * Parse correct_answer pra lista limpa.
- * "Mbappé,Haaland" → ["Mbappé", "Haaland"]
- * "Mbappé" → ["Mbappé"]
- * null → []
- */
 function parseCorrectAnswers(correctAnswer) {
   if (!correctAnswer) return []
   return correctAnswer.split(',').map((s) => s.trim()).filter(Boolean)
@@ -138,7 +132,6 @@ function SpecialPredictionRow({ item, allTeams }) {
     statusBg = 'bg-green-500/10 border-green-500/30'
   } else if (item.isCorrect === false) {
     statusColor = 'text-red-400/80'
-    // Plural se mais de uma resposta correta
     const corrects = parseCorrectAnswers(item.correct_answer)
     if (corrects.length > 1) {
       statusLabel = `Errou — respostas corretas: ${corrects.join(', ')}`
@@ -174,6 +167,15 @@ function SpecialPredictionRow({ item, allTeams }) {
 
 /* ═══════════════════════════════════════════════════
    UserPredictionsModal
+
+   Sobre visibilidade de palpites especiais:
+   - Próprio perfil: sempre vê (RLS libera)
+   - Outros: vê quando o deadline da pergunta passou OU quando
+     correct_answer foi definida (RLS controla via migration 011)
+   - O hook useUserPredictions devolve só os palpites visíveis pela
+     RLS, então se houver palpites visíveis OU é o próprio, mostramos.
+     Senão, mostramos placeholder amigável usando o specialDeadline
+     mais próximo como referência de quando vai abrir.
    ═══════════════════════════════════════════════════ */
 
 export default function UserPredictionsModal({ userId, currentUserId, allTeams, specialDeadline, onClose }) {
@@ -202,13 +204,23 @@ export default function UserPredictionsModal({ userId, currentUserId, allTeams, 
   const isViewingSelf = userId === currentUserId
   const deadlineMs = specialDeadline ? new Date(specialDeadline).getTime() : 0
   const deadlinePassed = deadlineMs > 0 && deadlineMs <= now
-  const showSpecialsAsLocked = !isViewingSelf && !deadlinePassed && specialDeadline
   const remainingToDeadline = deadlineMs - now
 
+  // showSpecialsAsLocked: se está vendo outro usuário, ainda não passou
+  // o deadline global, e o hook não devolveu nenhum palpite especial
+  // (porque a RLS bloqueou — sem correct_answer + deadline futuro).
+  // Se algum palpite especial tem correct_answer definida, ele vem no
+  // array e a tela mostra normalmente — não fica "bloqueado".
+  const hasAnyVisibleSpecial = specialPredictions.length > 0
+  const showSpecialsAsLocked = !isViewingSelf
+    && !deadlinePassed
+    && specialDeadline
+    && !hasAnyVisibleSpecial
+
+  // Soma pra header: só especiais visíveis contam (próprio sempre vê)
   const totalPoints = matchPredictions.reduce((s, p) => s + (p.points ?? 0), 0)
-    + (deadlinePassed || isViewingSelf
-      ? specialPredictions.reduce((s, p) => s + (p.points ?? 0), 0)
-      : 0)
+    + specialPredictions.reduce((s, p) => s + (p.points ?? 0), 0)
+
   const cravadas = matchPredictions.filter((p) => {
     const mult = MULTIPLIERS[p.round] ?? 1
     return p.status === 'finished' && p.points === 15 * mult
