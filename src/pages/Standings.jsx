@@ -105,7 +105,8 @@ function StatChip({ icon, value, label, activeColor }) {
   const contentColor = hasValue ? activeColor : 'text-gray-500'
 
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-900/60 border border-gray-700/50">
+    <div className="inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 rounded-md
+      bg-gray-900/60 border border-gray-700/50 whitespace-nowrap">
       <span className={`text-[10px] leading-none ${contentColor}`}>{icon}</span>
       <span className={`text-xs font-bold tabular-nums leading-none ${contentColor}`}>
         {value}
@@ -118,7 +119,103 @@ function StatChip({ icon, value, label, activeColor }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   PlayerCard
+   Subcomponentes compartilhados pra evitar duplicação
+   ═══════════════════════════════════════════════════ */
+
+function NameAndTags({ player, isMe, tier, nameSize }) {
+  return (
+    <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
+      <span
+        className={`truncate font-bold leading-tight min-w-0
+          ${nameSize}
+          ${isMe ? 'text-green-300' : 'text-white'}`}
+      >
+        {player.display_name?.split('@')[0]}
+      </span>
+
+      <div className="flex items-center gap-1.5 md:gap-2 flex-wrap md:flex-nowrap">
+        {isMe && (
+          <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded
+            bg-green-500/15 text-green-300 border border-green-500/30 leading-tight whitespace-nowrap">
+            Você
+          </span>
+        )}
+        {tier.tag && (
+          <span
+            className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border leading-tight whitespace-nowrap
+              ${tier.tagBg}`}
+          >
+            {tier.tag}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ChipsRow({ cravadas, acertos, specials }) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <StatChip
+        icon="◎"
+        value={cravadas}
+        label="cravadas"
+        activeColor="text-yellow-400"
+      />
+      <StatChip
+        icon="✓"
+        value={acertos}
+        label="acertos"
+        activeColor="text-blue-300"
+      />
+      <StatChip
+        icon="★"
+        value={specials > 0 ? `+${specials}` : specials}
+        label="especiais"
+        activeColor="text-emerald-400"
+      />
+    </div>
+  )
+}
+
+function PositionNumber({ position, tier, positionSize }) {
+  return (
+    <div className="flex-shrink-0 w-8 md:w-10 flex items-center justify-center">
+      <span
+        className={`font-black tabular-nums leading-none ${tier.posColor} ${positionSize}`}
+      >
+        {position}
+      </span>
+    </div>
+  )
+}
+
+function PointsBlock({ points, tier, ptsSize, marginTop }) {
+  return (
+    <div className="flex-shrink-0 text-right">
+      <div
+        className={`font-black tabular-nums leading-none ${ptsSize} ${tier.ptsColor}`}
+      >
+        {points}
+      </div>
+      <div className={`text-[9px] text-gray-500 uppercase tracking-widest ${marginTop} font-bold`}>
+        pts
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════
+   PlayerCard — layout adaptativo claramente separado
+
+   Mobile (<md): bloco com 2 linhas
+     Linha 1: posição + nome+tags + PTS
+     Linha 2: chips full width
+
+   Desktop (≥md): bloco com 3 colunas horizontais
+     Coluna 1: posição
+     Coluna 2: nome+tags (cima) + chips (baixo)
+     Coluna 3: PTS
    ═══════════════════════════════════════════════════ */
 
 function PlayerCard({ player, position, isMe, total, onClick }) {
@@ -126,11 +223,12 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
   const tier = TIER_CONFIG[tierKey]
   const isPodium = position <= 3
   const isLast = position === total
+  const isEmphasized = isPodium || isLast
 
-  const cardPadding = isPodium || isLast ? 'p-5' : 'p-4'
-  const positionSize = isPodium || isLast ? 'text-3xl' : 'text-xl'
-  const ptsSize = isPodium || isLast ? 'text-5xl' : 'text-3xl'
-  const nameSize = isPodium || isLast ? 'text-lg' : 'text-base'
+  const cardPadding = isEmphasized ? 'p-4 md:p-5' : 'p-3 md:p-4'
+  const positionSize = isEmphasized ? 'text-2xl md:text-3xl' : 'text-xl'
+  const ptsSize = isEmphasized ? 'text-4xl md:text-5xl' : 'text-2xl md:text-3xl'
+  const nameSize = isEmphasized ? 'text-base md:text-lg' : 'text-sm md:text-base'
 
   const cravadas = player.cravadas ?? 0
   const acertos = player.total_acertos ?? 0
@@ -154,6 +252,7 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
           ${cardPadding}
         `}
       >
+        {/* Barra lateral */}
         <div
           className="absolute top-0 left-0 bottom-0 w-1.5"
           style={{
@@ -161,74 +260,30 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
           }}
         />
 
-        <div className="relative pl-4 flex items-center gap-4">
-          <div className="flex-shrink-0 w-10 flex items-center justify-center">
-            <span
-              className={`font-black tabular-nums leading-none ${tier.posColor} ${positionSize}`}
-            >
-              {position}
-            </span>
+        <div className="relative pl-4">
+
+          {/* ═══ LAYOUT MOBILE (só renderiza em <md) ═══ */}
+          <div className="md:hidden flex flex-col gap-2.5">
+            {/* Linha 1: posição + nome+tags + PTS */}
+            <div className="flex items-center gap-3">
+              <PositionNumber position={position} tier={tier} positionSize={positionSize} />
+              <NameAndTags player={player} isMe={isMe} tier={tier} nameSize={nameSize} />
+              <PointsBlock points={player.total_points} tier={tier} ptsSize={ptsSize} marginTop="mt-0.5" />
+            </div>
+            {/* Linha 2: chips */}
+            <ChipsRow cravadas={cravadas} acertos={acertos} specials={specials} />
           </div>
 
-          <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-            <div className="flex items-center gap-3 min-w-0">
-              <span
-                className={`truncate font-bold leading-tight min-w-0
-                  ${nameSize}
-                  ${isMe ? 'text-green-300' : 'text-white'}`}
-              >
-                {player.display_name?.split('@')[0]}
-              </span>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {isMe && (
-                  <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded
-                    bg-green-500/15 text-green-300 border border-green-500/30 leading-tight whitespace-nowrap">
-                    Você
-                  </span>
-                )}
-                {tier.tag && (
-                  <span
-                    className={`text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border leading-tight whitespace-nowrap
-                      ${tier.tagBg}`}
-                  >
-                    {tier.tag}
-                  </span>
-                )}
-              </div>
+          {/* ═══ LAYOUT DESKTOP (só renderiza em ≥md) ═══ */}
+          <div className="hidden md:flex md:items-center md:gap-4">
+            <PositionNumber position={position} tier={tier} positionSize={positionSize} />
+            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+              <NameAndTags player={player} isMe={isMe} tier={tier} nameSize={nameSize} />
+              <ChipsRow cravadas={cravadas} acertos={acertos} specials={specials} />
             </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <StatChip
-                icon="◎"
-                value={cravadas}
-                label="cravadas"
-                activeColor="text-yellow-400"
-              />
-              <StatChip
-                icon="✓"
-                value={acertos}
-                label="acertos"
-                activeColor="text-blue-300"
-              />
-              <StatChip
-                icon="★"
-                value={specials > 0 ? `+${specials}` : specials}
-                label="especiais"
-                activeColor="text-emerald-400"
-              />
-            </div>
+            <PointsBlock points={player.total_points} tier={tier} ptsSize={ptsSize} marginTop="mt-1" />
           </div>
 
-          <div className="flex-shrink-0 text-right">
-            <div
-              className={`font-black tabular-nums leading-none ${ptsSize} ${tier.ptsColor}`}
-            >
-              {player.total_points}
-            </div>
-            <div className="text-[9px] text-gray-500 uppercase tracking-widest mt-1 font-bold">
-              pts
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -269,8 +324,6 @@ export default function Standings({ userId }) {
       setRanking(sorted)
       setAllTeams(teamsRes.data || [])
 
-      // Pega o menor deadline entre as perguntas especiais (na prática
-      // são todos iguais, mas tomamos o mínimo por segurança)
       const deadlines = (questionsRes.data || [])
         .map((q) => q.deadline)
         .filter(Boolean)
