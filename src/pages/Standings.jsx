@@ -15,7 +15,7 @@ const TIER_CONFIG = {
     posColor: 'text-yellow-300',
     ptsColor: 'text-yellow-300',
     ringColor: 'ring-yellow-500/30',
-    tag: 'CAMPEÃO',
+    tag: 'LÍDER',
     tagBg: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
   },
   silver: {
@@ -81,7 +81,7 @@ const TIER_CONFIG = {
     posColor: 'text-red-300',
     ptsColor: 'text-red-200',
     ringColor: 'ring-red-600/50',
-    tag: 'ENEM 2027',
+    tag: 'LANTERNA',
     tagBg: 'bg-red-700/30 text-red-100 border-red-500/60',
   },
 }
@@ -115,6 +115,50 @@ function StatChip({ icon, value, label, activeColor }) {
         {label}
       </span>
     </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════
+   Elevador
+   ═══════════════════════════════════════════════════ */
+
+function MovementBadge({ movement }) {
+  if (movement > 0) {
+    return (
+      <span
+        className="mt-1 inline-flex items-center justify-center gap-0.5
+          text-[10px] font-black tabular-nums leading-none text-green-400"
+        title={`Subiu ${movement} posição${movement === 1 ? '' : 'ões'}`}
+      >
+        <span>▲</span>
+        <span>{movement}</span>
+      </span>
+    )
+  }
+
+  if (movement < 0) {
+    const abs = Math.abs(movement)
+    return (
+      <span
+        className="mt-1 inline-flex items-center justify-center gap-0.5
+          text-[10px] font-black tabular-nums leading-none text-red-400"
+        title={`Caiu ${abs} posição${abs === 1 ? '' : 'ões'}`}
+      >
+        <span>▼</span>
+        <span>{abs}</span>
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className="mt-1 inline-flex items-center justify-center gap-0.5
+        text-[10px] font-black tabular-nums leading-none text-gray-500"
+      title="Sem variação"
+    >
+      <span>■</span>
+      <span>0</span>
+    </span>
   )
 }
 
@@ -178,14 +222,15 @@ function ChipsRow({ cravadas, acertos, specials }) {
   )
 }
 
-function PositionNumber({ position, tier, positionSize }) {
+function PositionNumber({ position, tier, positionSize, movement }) {
   return (
-    <div className="flex-shrink-0 w-8 md:w-10 flex items-center justify-center">
+    <div className="flex-shrink-0 w-8 md:w-10 flex flex-col items-center justify-center">
       <span
         className={`font-black tabular-nums leading-none ${tier.posColor} ${positionSize}`}
       >
         {position}
       </span>
+      <MovementBadge movement={movement} />
     </div>
   )
 }
@@ -233,6 +278,7 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
   const cravadas = player.cravadas ?? 0
   const acertos = player.total_acertos ?? 0
   const specials = player.special_points ?? 0
+  const movement = player.elevator_movement ?? 0
 
   return (
     <div className="relative">
@@ -266,7 +312,12 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
           <div className="md:hidden flex flex-col gap-2.5">
             {/* Linha 1: posição + nome+tags + PTS */}
             <div className="flex items-center gap-3">
-              <PositionNumber position={position} tier={tier} positionSize={positionSize} />
+              <PositionNumber
+                position={position}
+                tier={tier}
+                positionSize={positionSize}
+                movement={movement}
+              />
               <NameAndTags player={player} isMe={isMe} tier={tier} nameSize={nameSize} />
               <PointsBlock points={player.total_points} tier={tier} ptsSize={ptsSize} marginTop="mt-0.5" />
             </div>
@@ -276,7 +327,12 @@ function PlayerCard({ player, position, isMe, total, onClick }) {
 
           {/* ═══ LAYOUT DESKTOP (só renderiza em ≥md) ═══ */}
           <div className="hidden md:flex md:items-center md:gap-4">
-            <PositionNumber position={position} tier={tier} positionSize={positionSize} />
+            <PositionNumber
+              position={position}
+              tier={tier}
+              positionSize={positionSize}
+              movement={movement}
+            />
             <div className="flex-1 min-w-0 flex flex-col gap-2.5">
               <NameAndTags player={player} isMe={isMe} tier={tier} nameSize={nameSize} />
               <ChipsRow cravadas={cravadas} acertos={acertos} specials={specials} />
@@ -303,8 +359,9 @@ export default function Standings({ userId }) {
 
   useEffect(() => {
     const fetchAll = async () => {
-      const [rankingRes, teamsRes, questionsRes] = await Promise.all([
+      const [rankingRes, baselineRes, teamsRes, questionsRes] = await Promise.all([
         supabase.from('ranking').select('*'),
+        supabase.from('ranking_elevator_baseline').select('*'),
         supabase.from('teams').select('id, name, code'),
         supabase.from('special_questions').select('deadline'),
       ])
@@ -315,13 +372,59 @@ export default function Standings({ userId }) {
         return
       }
 
+      if (baselineRes.error) {
+        console.error('Erro ao buscar baseline do elevador:', baselineRes.error)
+      }
+
+      const baselineRows = baselineRes.data || []
+      const baselineByProfile = {}
+      baselineRows.forEach((row) => {
+        baselineByProfile[row.profile_id] = row
+      })
+
+      // Mostra movimentação apenas quando AMBOS os lados têm pontos:
+      // - baseline com pontos (ranking de referência válido)
+      // - ranking atual com pontos (alguém já marcou algo)
+      // Se qualquer um dos dois está zerado, UI mostra ■ 0 pra todos.
+      // Isso cobre: pré-Copa (ambos zerados), e o momento em que você
+      // limpa predictions pra começar a Copa oficial (baseline ainda tem
+      // pontos dos testes, mas ranking atual zerou).
+      const baselineHasPoints = baselineRows.some((row) =>
+        (row.baseline_total_points ?? 0) > 0 ||
+        (row.baseline_cravadas ?? 0) > 0 ||
+        (row.baseline_total_acertos ?? 0) > 0 ||
+        (row.baseline_special_points ?? 0) > 0
+      )
+      const currentRankingHasPoints = (rankingRes.data || []).some((row) =>
+        (row.total_points ?? 0) > 0 ||
+        (row.cravadas ?? 0) > 0 ||
+        (row.total_acertos ?? 0) > 0 ||
+        (row.special_points ?? 0) > 0
+      )
+      const baselineIsMeaningful = baselineHasPoints && currentRankingHasPoints
+
       const sorted = (rankingRes.data || []).sort((a, b) => {
         if (b.total_points !== a.total_points) return b.total_points - a.total_points
         if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas
         return b.total_acertos - a.total_acertos
       })
 
-      setRanking(sorted)
+      const withElevator = sorted.map((player, idx) => {
+        const currentPosition = idx + 1
+        const baseline = baselineByProfile[player.profile_id]
+
+        const movement =
+          baselineIsMeaningful && baseline
+            ? baseline.baseline_position - currentPosition
+            : 0
+
+        return {
+          ...player,
+          elevator_movement: movement,
+        }
+      })
+
+      setRanking(withElevator)
       setAllTeams(teamsRes.data || [])
 
       const deadlines = (questionsRes.data || [])
@@ -390,15 +493,15 @@ export default function Standings({ userId }) {
 
       <div className="mt-6 pt-4 border-t border-gray-800/60">
         <p className="text-center text-[10px] text-gray-600 uppercase tracking-widest mb-2 font-bold">
-          Zonas de premiação
+          Zonas do ranking
         </p>
         <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center text-[10px] uppercase tracking-wider">
-          <LegendItem barColor="#fbbf24" label="Campeão" />
+          <LegendItem barColor="#fbbf24" label="Líder" />
           <LegendItem barColor="#94a3b8" label="Vice" />
           <LegendItem barColor="#b45309" label="3º" />
           <LegendItem barColor="#3b82f6" label="Libertadores (4-8)" />
           <LegendItem barColor="#ef4444" label="Rebaixamento" />
-          <LegendItem barColor="#000000" label="ENEM 2027" />
+          <LegendItem barColor="#000000" label="Lanterna" />
         </div>
       </div>
 

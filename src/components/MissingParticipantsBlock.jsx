@@ -28,9 +28,11 @@ export default function MissingParticipantsBlock({
 
   const missingCount = missing.length
   const participatedCount = total - missingCount
-  const labelPlural = label.endsWith('u')
-    ? label.slice(0, -1) + 'ram'  // palpitou → palpitaram, respondeu → responderam
-    : label + 'ram'
+  const labelPlural =
+    label === 'palpitou' ? 'palpitaram' :
+    label === 'respondeu' ? 'responderam' :
+    label.endsWith('u') ? label.slice(0, -1) + 'ram' :
+    label + 'ram'
 
   // Todo mundo participou: mensagem positiva, sem botão de expandir
   if (missingCount === 0 && total > 0) {

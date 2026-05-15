@@ -19,6 +19,81 @@ export default function Rules() {
           </p>
         </Section>
 
+        {/* Premiação */}
+        <Section title="Premiação">
+          <div className="space-y-5">
+            {/* Resumo de valores */}
+            <div className="bg-gray-900/40 rounded-lg p-3 border border-gray-700/30">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-0.5">
+                    Entrada
+                  </p>
+                  <p className="text-white font-bold text-base">R$ 200</p>
+                  <p className="text-gray-500 text-[10px]">por participante</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-0.5">
+                    Premiação total
+                  </p>
+                  <p className="text-yellow-400 font-bold text-base">R$ 7.500</p>
+                  <p className="text-gray-500 text-[10px]">
+                    R$ 7.000 das entradas + R$ 500 dos últimos
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Top 8 — quem ganha */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                🏆 Top 8 — Quem ganha
+              </p>
+
+              {/* Pódio em destaque (com espaço entre cada linha) */}
+              <div className="space-y-1.5 mb-3">
+                <PodiumRow position="🥇 Campeão" prize="R$ 2.500" color="text-yellow-300" />
+                <PodiumRow position="🥈 Vice" prize="R$ 1.700" color="text-slate-100" />
+                <PodiumRow position="🥉 3º lugar" prize="R$ 1.150" color="text-amber-400" />
+              </div>
+
+              {/* Top 4-8 (tabela compacta) */}
+              <table className="w-full text-sm">
+                <tbody>
+                  <PrizeRow position="4º lugar" prize="R$ 700" color="text-blue-300" />
+                  <PrizeRow position="5º lugar" prize="R$ 500" color="text-blue-300" />
+                  <PrizeRow position="6º lugar" prize="R$ 400" color="text-blue-300" />
+                  <PrizeRow position="7º lugar" prize="R$ 300" color="text-blue-300" />
+                  <PrizeRow position="8º lugar" prize="R$ 250" color="text-blue-300" />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Últimos 4 — pagamento extra */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                📉 Últimos 4 — Pagamento extra
+              </p>
+
+              {/* 32º a 34º (compacto) */}
+              <table className="w-full text-sm mb-3">
+                <tbody>
+                  <PrizeRow position="32º lugar" prize="+ R$ 50" color="text-red-400/80" />
+                  <PrizeRow position="33º lugar" prize="+ R$ 100" color="text-red-400/80" />
+                  <PrizeRow position="34º lugar" prize="+ R$ 150" color="text-red-400/80" />
+                </tbody>
+              </table>
+
+              {/* Lanterna em destaque */}
+              <PodiumRow position="💀 Lanterna" prize="+ R$ 200" color="text-red-300" isLast />
+
+              <p className="text-gray-500 text-xs mt-3 italic">
+                O pagamento extra dos últimos 4 colocados é além da taxa de entrada de R$ 200.
+              </p>
+            </div>
+          </div>
+        </Section>
+
         {/* Pontuação - apostando em vitória */}
         <Section title="Pontuação — apostando em vitória">
           <table className="w-full text-sm">
@@ -180,6 +255,45 @@ function MultRow({ fase, multi, exemplo }) {
       <td className="py-2.5 text-white">{fase}</td>
       <td className="py-2.5 text-center font-bold text-yellow-400">{multi}</td>
       <td className="py-2.5 text-gray-400">{exemplo}</td>
+    </tr>
+  )
+}
+
+/**
+ * PodiumRow — linha em destaque pra Campeão/Vice/3º/Lanterna.
+ * Card próprio, padding maior, espaçamento entre cards garantido
+ * pelo space-y do container.
+ */
+function PodiumRow({ position, prize, color, isLast = false }) {
+  return (
+    <div
+      className={`flex items-center justify-between px-3 py-2.5 rounded-lg border
+        ${isLast
+          ? 'bg-red-900/20 border-red-700/40'
+          : 'bg-gray-900/40 border-gray-700/40'}`}
+    >
+      <span className={`font-bold ${color}`}>
+        {position}
+      </span>
+      <span className={`font-bold text-base tabular-nums ${color}`}>
+        {prize}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * PrizeRow — linha simples de tabela pra posições 4-8 e 32-34.
+ */
+function PrizeRow({ position, prize, color = 'text-white' }) {
+  return (
+    <tr className="border-b border-gray-800/60 last:border-0">
+      <td className={`py-2.5 ${color}`}>
+        {position}
+      </td>
+      <td className={`py-2.5 text-right tabular-nums font-semibold ${color}`}>
+        {prize}
+      </td>
     </tr>
   )
 }
