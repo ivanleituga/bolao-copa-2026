@@ -18,12 +18,23 @@ function checkSpecialCorrect(answer, correctAnswer) {
 }
 
 /**
- * Busca o histórico visível de palpites de um usuário:
- * 1. Palpites em jogos — só os que fazem sentido socialmente
- * 2. Palpites especiais — sempre que a RLS retornar
+ * Busca o histórico de palpites visíveis de um usuário pra exibir
+ * no UserPredictionsModal (clique num card de outro participante).
  *
- * Filtro client-side adicional pra que admin não veja palpites de
- * jogos futuros nesse modal específico.
+ * O que vem do banco é controlado pela RLS:
+ * - Palpites em jogos: visíveis se kickoff <= NOW() OU status = finished
+ *   OU é o próprio usuário. Caso contrário, a RLS oculta.
+ * - Palpites especiais: visíveis se deadline <= NOW() OU correct_answer
+ *   IS NOT NULL OU é o próprio usuário. Caso contrário, a RLS oculta.
+ *
+ * Admin segue as MESMAS regras que usuários comuns na interface
+ * (bypass admin foi removido na migration 014). Pra debug/auditoria
+ * via SQL Editor, ver receitas em supabase/scripts/.
+ *
+ * Filtro client-side adicional: como a RLS de predictions usa
+ * kickoff_time, o palpite de um jogo iniciado vem. Mas pra esse
+ * modal específico, filtramos pra mostrar apenas jogos já iniciados
+ * OU finalizados (mesma lógica da RLS, redundância defensiva).
  */
 export function useUserPredictions(userId) {
   const [matchPredictions, setMatchPredictions] = useState([])
@@ -138,7 +149,6 @@ export function useUserPredictions(userId) {
         .map((sp) => {
           const q = questionById[sp.question_id]
           if (!q) return null
-          // Aceita lista separada por vírgula em correct_answer
           const isCorrect = checkSpecialCorrect(sp.answer, q.correct_answer)
           return {
             question_id: q.id,

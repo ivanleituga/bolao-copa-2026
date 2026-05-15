@@ -12,7 +12,6 @@ import MissingParticipantsBlock from '../components/MissingParticipantsBlock'
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-// Ordem oficial das rounds de mata-mata (pra agrupar visualmente os cards)
 const KNOCKOUT_ROUND_ORDER = ['round_of_32', 'round_of_16', 'quarter', 'semi', 'third_place', 'final']
 
 function formatMatchDate(iso) {
@@ -24,7 +23,6 @@ function formatMatchDate(iso) {
   return `${dd}/${mm} • ${DIAS[d.getDay()]} • ${hh}:${min}`
 }
 
-/** Agrupa matches por round, na ordem oficial das fases */
 function groupByRound(matches) {
   const groups = {}
   matches.forEach((m) => {
@@ -119,7 +117,6 @@ function AdminMatchCard({ match, onResult, onReset }) {
     <div className={`bg-gray-800/80 rounded-xl border overflow-hidden
       ${isFinished ? 'border-gray-700/30' : 'border-gray-700/40'}`}>
 
-      {/* Header do card */}
       <div className="px-4 py-2.5 border-b border-gray-700/30 flex items-center justify-between">
         <div className="text-xs text-gray-400">
           <span className="font-medium">{formatMatchDate(match.kickoff_time)}</span>
@@ -136,18 +133,14 @@ function AdminMatchCard({ match, onResult, onReset }) {
         )}
       </div>
 
-      {/* Corpo */}
       <div className="px-4 py-4">
-        {/* Estádio */}
         {match.venue && (
           <p className="text-center text-gray-500 text-[10px] uppercase tracking-wider mb-3 truncate">
             {match.venue}
           </p>
         )}
 
-        {/* Times + Placar */}
         <div className="flex items-center justify-center gap-3">
-          {/* Casa */}
           <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
             <span className="text-white text-sm font-medium truncate text-right">
               {match.home_team.name}
@@ -155,7 +148,6 @@ function AdminMatchCard({ match, onResult, onReset }) {
             <TeamFlag code={match.home_team.code} size={26} />
           </div>
 
-          {/* Input de placar */}
           <div className="flex items-center gap-2 px-2">
             <input
               type="number"
@@ -178,7 +170,6 @@ function AdminMatchCard({ match, onResult, onReset }) {
             />
           </div>
 
-          {/* Visitante */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <TeamFlag code={match.away_team.code} size={26} />
             <span className="text-white text-sm font-medium truncate">
@@ -187,7 +178,6 @@ function AdminMatchCard({ match, onResult, onReset }) {
           </div>
         </div>
 
-        {/* Ações */}
         <div className="mt-4">
           {error && (
             <p className="text-center text-red-400 text-xs mb-2">{error}</p>
@@ -295,19 +285,23 @@ function AdminMatchCard({ match, onResult, onReset }) {
 }
 
 /* ═══════════════════════════════════════════════════
-   SpecialQuestionsAdmin — gerenciamento das perguntas especiais
+   SpecialQuestionAdmin — gerenciamento das perguntas especiais
 
-   Privacidade das respostas dos participantes:
-   - Antes do deadline E sem correct_answer definida: o admin vê só
-     a participação (quem respondeu / quem falta), SEM ver respostas.
-   - Depois do deadline OU com correct_answer definida: revela as
-     respostas agrupadas como antes.
+   Princípio de privacidade: o admin não vê respostas individuais
+   dos participantes através da interface, independente de prazo ou
+   correct_answer estar definida. A interface mostra apenas:
+     - Botão pra definir/limpar a resposta correta
+     - Contagem de participação (X/Y responderam) + lista de faltantes
 
-   Usa a RPC special_question_participation pra contar participação
-   sem violar a RLS.
+   Pra ver respostas individuais antes do prazo (debug/auditoria),
+   usar SQL Editor com receitas em supabase/scripts/.
+
+   Após o prazo ou após definir correct_answer, a RLS libera o
+   conteúdo pra todos — então admin vê pelo modal de perfil
+   (clicando no usuário no Ranking), igual qualquer participante.
    ═══════════════════════════════════════════════════ */
 
-function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpdate }) {
+function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
   const isMulti = question.answer_type === 'player'
 
   const parseInitial = (val) => {
@@ -396,30 +390,6 @@ function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpd
     }
   }
 
-  const correctSet = new Set(
-    (question.correct_answer || '')
-      .split(',')
-      .map((s) => s.toLowerCase().trim())
-      .filter(Boolean)
-  )
-
-  // Decide se mostra respostas individuais ou só participação
-  const deadlineMs = question.deadline ? new Date(question.deadline).getTime() : 0
-  const deadlinePassed = deadlineMs > 0 && deadlineMs <= now
-  const hasCorrectAnswer = !!question.correct_answer
-  const showResponses = deadlinePassed || hasCorrectAnswer
-
-  // Agrupamento das respostas (só usado quando showResponses === true)
-  const answerGroups = {}
-  responses.forEach((r) => {
-    const key = r.answer.toLowerCase().trim()
-    if (!answerGroups[key]) answerGroups[key] = { answer: r.answer, count: 0, responses: [] }
-    answerGroups[key].count++
-    answerGroups[key].responses.push(r)
-  })
-  const grouped = Object.values(answerGroups).sort((a, b) => b.count - a.count)
-
-  // Lista de não-respondentes pra MissingParticipantsBlock
   const missing = (allUsers || []).filter((u) => !participatedIds.has(u.id))
 
   const canSave = isMulti ? correctAnswer.length > 0 : correctAnswer.trim().length > 0
@@ -483,7 +453,6 @@ function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpd
           {/* MODO PLAYER: multi-select com chips */}
           {isMulti && (
             <div className="space-y-2">
-              {/* Linha de adição: dropdown + botão Adicionar */}
               <div className="flex gap-2">
                 <select
                   value={pendingPick}
@@ -511,7 +480,6 @@ function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpd
                 </button>
               </div>
 
-              {/* Chips dos selecionados */}
               {correctAnswer.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {correctAnswer.map((name) => (
@@ -533,7 +501,6 @@ function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpd
                 </div>
               )}
 
-              {/* Linha de ações: Salvar + Limpar */}
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveCorrectAnswer}
@@ -568,60 +535,20 @@ function SpecialQuestionAdmin({ question, responses, teams, allUsers, now, onUpd
           )}
         </div>
 
-        {/* Participação / Respostas */}
+        {/* Participação dos usuários */}
         <div>
           <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold block mb-1.5">
-            {showResponses ? 'Respostas dos participantes' : 'Participação'}
+            Participação
           </label>
 
-          {!showResponses && (
-            <>
-              {!participationLoaded ? (
-                <p className="text-gray-500 text-xs italic">Carregando participação...</p>
-              ) : (
-                <MissingParticipantsBlock
-                  total={(allUsers || []).length}
-                  missing={missing}
-                  label="respondeu"
-                />
-              )}
-              <p className="text-[10px] text-gray-600 italic mt-2">
-                As respostas individuais aparecem após o prazo da pergunta ou após você definir a resposta correta.
-              </p>
-            </>
-          )}
-
-          {showResponses && (
-            <>
-              {grouped.length === 0 ? (
-                <p className="text-gray-600 text-xs">Nenhuma resposta recebida.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                  {grouped.map((group) => (
-                    <div key={group.answer} className="space-y-1">
-                      {group.responses.map((resp) => (
-                        <div
-                          key={resp.id}
-                          className="flex items-center justify-between py-1.5 px-3 bg-gray-900/40 rounded-lg"
-                        >
-                          <span className="text-gray-400 text-xs truncate flex-1 min-w-0">
-                            {resp.display_name?.split('@')[0]}
-                          </span>
-
-                          <span className={`text-sm font-medium ${
-                            correctSet.has(resp.answer.toLowerCase().trim())
-                              ? 'text-green-400'
-                              : 'text-white'
-                          }`}>
-                            {resp.answer}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+          {!participationLoaded ? (
+            <p className="text-gray-500 text-xs italic">Carregando participação...</p>
+          ) : (
+            <MissingParticipantsBlock
+              total={(allUsers || []).length}
+              missing={missing}
+              label="respondeu"
+            />
           )}
         </div>
       </div>
@@ -637,52 +564,34 @@ export default function Admin() {
   const [matches, setMatches] = useState([])
   const [teams, setTeams] = useState([])
   const [specialQuestions, setSpecialQuestions] = useState([])
-  const [specialResponses, setSpecialResponses] = useState({})
   const [allUsers, setAllUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
   const [now, setNow] = useState(() => Date.now())
+
   // Mapa { match_id → quantidade de palpites }. Só usado na aba
   // "Definir mata-mata" pra avisar admin antes de alterar um confronto
-  // que já tem palpites registrados.
+  // que já tem palpites registrados. Vem da RPC match_predictions_counts
+  // que respeita privacidade (retorna só counts, não os palpites).
   const [predictionsCount, setPredictionsCount] = useState({})
 
+  // Busca perguntas especiais + profiles pra montar a lista de
+  // participação. NÃO busca special_predictions (privacidade — admin
+  // segue mesmas regras que usuário comum na UI).
   const fetchSpecial = async () => {
-    const [questionsRes, predsRes, profilesRes] = await Promise.all([
+    const [questionsRes, profilesRes] = await Promise.all([
       supabase.from('special_questions').select('*').order('id'),
-      supabase.from('special_predictions').select('*'),
       supabase.from('profiles').select('id, display_name').order('display_name'),
     ])
 
     setSpecialQuestions(questionsRes.data || [])
     setAllUsers(profilesRes.data || [])
-
-    if (questionsRes.data && questionsRes.data.length > 0) {
-      const profilesMap = {}
-      if (profilesRes.data) {
-        profilesRes.data.forEach((p) => { profilesMap[p.id] = p.display_name })
-      }
-
-      const grouped = {}
-      if (predsRes.data) {
-        predsRes.data.forEach((r) => {
-          if (!grouped[r.question_id]) grouped[r.question_id] = []
-          grouped[r.question_id].push({
-            ...r,
-            display_name: profilesMap[r.user_id] || r.user_id,
-          })
-        })
-      }
-      setSpecialResponses(grouped)
-    }
   }
 
-  // Conta palpites por match. Usado na aba "Definir mata-mata" pra
-  // avisar quantos palpites serão deletados antes de alterar um confronto.
+  // Conta palpites por match via RPC (que só admin pode chamar e
+  // retorna agregado sem expor palpites).
   const fetchPredictionsCount = async () => {
-    const { data, error } = await supabase
-      .from('predictions')
-      .select('match_id')
+    const { data, error } = await supabase.rpc('match_predictions_counts')
 
     if (error) {
       console.error('Erro ao contar palpites:', error)
@@ -690,8 +599,8 @@ export default function Admin() {
     }
 
     const counts = {}
-    data.forEach((p) => {
-      counts[p.match_id] = (counts[p.match_id] || 0) + 1
+    ;(data || []).forEach((row) => {
+      counts[row.match_id] = row.predictions_count
     })
     setPredictionsCount(counts)
   }
@@ -754,7 +663,6 @@ export default function Admin() {
     )
   }
 
-  // Callback quando admin define OU altera os times de um match de mata-mata.
   const handleKnockoutSave = (matchId, homeId, awayId, deletedCount) => {
     const home = teams.find((t) => t.id === homeId)
     const away = teams.find((t) => t.id === awayId)
@@ -832,10 +740,8 @@ export default function Admin() {
               <SpecialQuestionAdmin
                 key={q.id}
                 question={q}
-                responses={specialResponses[q.id] || []}
                 teams={teams}
                 allUsers={allUsers}
-                now={now}
                 onUpdate={fetchSpecial}
               />
             ))}
@@ -851,7 +757,6 @@ export default function Admin() {
         </h3>
       </div>
 
-      {/* Filtros */}
       <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
         <button
           onClick={() => setFilter('pending')}
@@ -888,7 +793,6 @@ export default function Admin() {
         </button>
       </div>
 
-      {/* Conteúdo conforme filtro ativo */}
       {filter === 'knockout' ? (
         editableKnockout.length === 0 ? (
           <div className="flex items-center justify-center py-16">
@@ -921,7 +825,6 @@ export default function Admin() {
           </div>
         )
       ) : (
-        // Abas originais: aguardando / finalizados
         displayMatches.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-gray-500 text-sm">
