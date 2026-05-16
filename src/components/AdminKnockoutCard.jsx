@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getRoundLabel } from '../lib/scoring'
+import { getKnockoutMatchNumber } from '../lib/knockout'
 import { TeamFlag } from './TeamFlag'
 
 /* ═══════════════════════════════════════════════════
@@ -26,8 +27,8 @@ function formatMatchDate(iso) {
    - "Salvar confronto" — placeholders → times definidos
    - "Atualizar confronto" — times definidos, sem palpites ainda → trocar
    - "Alterar confronto" — times definidos, COM palpites → trocar (com confirmação)
-   - "Resetar pra placeholders" — times definidos → volta pros placeholders
-       (com confirmação se houver palpites). Botão separado, layout discreto.
+   - "Resetar" — times definidos → volta pros placeholders
+       (com confirmação se houver palpites). Botão ao lado do principal.
    ═══════════════════════════════════════════════════ */
 
 export default function AdminKnockoutCard({ match, teams, now, predictionsCount, onSave, onReset }) {
@@ -164,13 +165,23 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
   // Estado: alguma confirmação aberta? Esconde os dropdowns nesse caso.
   const isConfirming = confirming || confirmingReset
 
+  // Número FIFA da partida (#73 a #104) pra exibir no header.
+  const matchNumber = getKnockoutMatchNumber(match)
+
   return (
     <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
-      {/* Header: data + round */}
-      <div className="px-4 py-2.5 border-b border-gray-700/30 text-xs text-gray-400">
-        <span className="font-medium">{formatMatchDate(match.kickoff_time)}</span>
-        <span className="text-gray-600 mx-1.5">·</span>
-        <span>{getRoundLabel(match.round)}</span>
+      {/* Header: data + round + número da partida */}
+      <div className="px-4 py-2.5 border-b border-gray-700/30 text-xs text-gray-400 flex items-center justify-between gap-2">
+        <div className="truncate">
+          <span className="font-medium">{formatMatchDate(match.kickoff_time)}</span>
+          <span className="text-gray-600 mx-1.5">·</span>
+          <span>{getRoundLabel(match.round)}</span>
+        </div>
+        {matchNumber && (
+          <span className="text-gray-500 font-mono shrink-0">
+            #{matchNumber}
+          </span>
+        )}
       </div>
 
       {/* Corpo */}
@@ -323,7 +334,7 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
             </div>
           )}
 
-                 {/* Botões normais (quando não está confirmando nada) */}
+          {/* Botões normais (quando não está confirmando nada) */}
           {!isConfirming && (
             <div className="flex items-center justify-between gap-2 min-h-[32px]">
               <div className="text-[11px] flex-1 min-w-0">

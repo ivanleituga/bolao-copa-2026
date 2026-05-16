@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { TeamFlag } from './TeamFlag'
 import { formatCountdown, countdownColor, formatSavedTime } from '../lib/timeformat'
+import { getKnockoutMatchNumber, getKnockoutMatchKey } from '../lib/knockout'
 import MatchPredictionsModal from './MatchPredictionsModal'
 
 /* ═══════════════════════════════════════════════════
@@ -29,10 +30,6 @@ const ROUND_LABELS = {
  * Como todas as linhas têm a mesma altura, o alinhamento entre cards
  * é perfeito independente do conteúdo (placeholder vs com bandeira,
  * com input ou sem, etc).
- *
- * 110px cabe: data (1 linha) + 2 linhas de time + status (1 linha)
- * com padding p-2 e fonte text-[11px]. Conteúdo curto fica
- * centralizado vertical via flex justify-between.
  */
 const DESKTOP_CARD_HEIGHT = 110
 
@@ -94,64 +91,6 @@ const DESKTOP_PLACEMENTS = {
   semi: [
     { rowStart: 1, rowSpan: 8 },
   ],
-}
-
-const PLACEHOLDER_TO_MATCH_NUMBER = {
-  '2A×2B': 'M73',
-  '1E×3ABCDF': 'M74',
-  '1F×2C': 'M75',
-  '1C×2F': 'M76',
-  '1I×3CDFGH': 'M77',
-  '2E×2I': 'M78',
-  '1A×3CEFHI': 'M79',
-  '1L×3EHIJK': 'M80',
-  '1D×3BEFIJ': 'M81',
-  '1G×3AEHIJ': 'M82',
-  '2K×2L': 'M83',
-  '1H×2J': 'M84',
-  '1B×3EFGIJ': 'M85',
-  '1J×2H': 'M86',
-  '1K×3DEIJL': 'M87',
-  '2D×2G': 'M88',
-}
-
-function getMatchNumber(match) {
-  if (match.round === 'round_of_32') {
-    const key = `${match.home_placeholder}×${match.away_placeholder}`
-    return PLACEHOLDER_TO_MATCH_NUMBER[key]
-  }
-  if (match.round === 'round_of_16') {
-    const key = `${match.home_placeholder}×${match.away_placeholder}`
-    const lookup = {
-      'W74×W77': 'M89',
-      'W73×W75': 'M90',
-      'W76×W78': 'M91',
-      'W79×W80': 'M92',
-      'W83×W84': 'M93',
-      'W81×W82': 'M94',
-      'W86×W88': 'M95',
-      'W85×W87': 'M96',
-    }
-    return lookup[key]
-  }
-  if (match.round === 'quarter') {
-    const key = `${match.home_placeholder}×${match.away_placeholder}`
-    const lookup = {
-      'W89×W90': 'M97',
-      'W93×W94': 'M98',
-      'W91×W92': 'M99',
-      'W95×W96': 'M100',
-    }
-    return lookup[key]
-  }
-  if (match.round === 'semi') {
-    const key = `${match.home_placeholder}×${match.away_placeholder}`
-    if (key === 'W97×W98') return 'M101'
-    if (key === 'W99×W100') return 'M102'
-  }
-  if (match.round === 'third_place') return 'M103'
-  if (match.round === 'final') return 'M104'
-  return null
 }
 
 function formatDate(iso) {
@@ -365,6 +304,10 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
     ? 'border-green-500/50 shadow-[0_0_0_1px_rgba(34,197,94,0.15)]'
     : 'border-gray-700/40'
 
+  // Número FIFA da partida (#73 a #104). Mostrado discreto no header
+  // pra ajudar a localizar o jogo em tabelas externas / WhatsApp.
+  const matchNumber = getKnockoutMatchNumber(match)
+
   return (
     <>
       <div
@@ -373,8 +316,18 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
           ${cardCursor} ${cardHover} transition-colors flex flex-col justify-between overflow-hidden`}
       >
         <div>
-          <div className={`text-[9px] text-gray-500 uppercase tracking-wider font-bold mb-1 truncate ${compact ? '' : 'text-center'}`}>
-            {compact ? formatDateCompact(match.kickoff_time) : formatDate(match.kickoff_time)}
+          {/* Header: data + número da partida.
+              Compact (desktop): data à esquerda, #N à direita.
+              Non-compact (mobile): centralizado, com #N ao lado. */}
+          <div className={`text-[9px] text-gray-500 uppercase tracking-wider font-bold mb-1 flex items-center gap-1 ${compact ? 'justify-between' : 'justify-center'}`}>
+            <span className="truncate">
+              {compact ? formatDateCompact(match.kickoff_time) : formatDate(match.kickoff_time)}
+            </span>
+            {matchNumber && (
+              <span className="text-gray-600 font-mono shrink-0">
+                #{matchNumber}
+              </span>
+            )}
           </div>
 
           <div className="space-y-0.5">
@@ -465,20 +418,6 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
 
 /* ═══════════════════════════════════════════════════
    Desktop bracket — grid de slots fixos (8 linhas iguais)
-
-   Insight do Codex: cada coluna tem uma grade de 8 linhas de altura
-   idêntica (DESKTOP_CARD_HEIGHT). Cada match ocupa o número de
-   linhas correto pra criar visual de árvore:
-     - 16 avos: 8 cards × span 1
-     - Oitavas: 4 cards × span 2 (centralizados em pares)
-     - Quartas: 2 cards × span 4
-     - Semi: 1 card × span 8
-   Como todas as linhas têm a mesma altura, o alinhamento entre
-   colunas é perfeito independente do conteúdo do card.
-
-   A coluna central (Final + 3º lugar) usa a mesma grade de 8 linhas,
-   com Final em rows 4-5 (centralizada com os Semis que ocupam 1-8)
-   e 3º lugar em rows 7-8.
    ═══════════════════════════════════════════════════ */
 
 function DesktopColumn({ label, matchNumbers, placements, matchByNumber, predictions, now, userId, onSaved }) {
@@ -527,21 +466,14 @@ function DesktopColumn({ label, matchNumbers, placements, matchByNumber, predict
 
 /**
  * CenterFinalColumn — coluna central com Final + 3º lugar.
- *
- * Usa a mesma grade de 8 linhas (DESKTOP_CARD_HEIGHT). Como os Semis
- * laterais ocupam toda a grade (rows 1-8, centralizados), a Final
- * precisa ficar nas rows 4-5 pra alinhar exatamente com o centro
- * dos Semis.
- *
- * O 3º lugar fica em rows 7-8 (logo abaixo da Final, com gap visual).
  */
 function CenterFinalColumn({ matchByNumber, predictions, now, userId, onSaved }) {
   const final = matchByNumber['M104']
   const thirdPlace = matchByNumber['M103']
 
   // Mesma altura vertical das demais colunas:
-  // 8 linhas de card + 7 gaps de 4px (gap-y-1)
-  const bracketHeight = (DESKTOP_CARD_HEIGHT * 8) + (4 * 7)
+  // 8 linhas de card + 7 gaps de 8px (gap-y-2)
+  const bracketHeight = (DESKTOP_CARD_HEIGHT * 8) + (8 * 7)
 
   return (
     <div className="flex flex-col min-w-0">
@@ -549,8 +481,8 @@ function CenterFinalColumn({ matchByNumber, predictions, now, userId, onSaved })
         .
       </h4>
 
-      {/* Mantém a altura do grid lateral, mas volta ao comportamento visual original:
-          Final + 3º lugar como um bloco centralizado verticalmente. */}
+      {/* Mantém a altura do grid lateral. Final + 3º lugar como bloco
+          centralizado verticalmente. */}
       <div
         className="flex flex-col justify-center gap-3"
         style={{ height: bracketHeight }}
@@ -595,8 +527,6 @@ function DesktopBracket({ matchByNumber, predictions, now, userId, onSaved }) {
       <div
         className="grid gap-2 items-start"
         style={{
-          // Frações ajustáveis — colunas externas levemente maiores
-          // pra acomodar nomes longos de seleções (16 avos têm nome real).
           gridTemplateColumns: '1fr 0.95fr 0.85fr 0.9fr 1fr 0.9fr 0.85fr 0.95fr 1fr',
         }}
       >
@@ -824,10 +754,12 @@ export default function KnockoutBracket({ userId, now }) {
     )
   }
 
+  // matchByNumber permite acessar os matches por "M73", "M89", etc
+  // — usado pelo bracket pra mapear placement → match.
   const matchByNumber = {}
   matches.forEach((m) => {
-    const num = getMatchNumber(m)
-    if (num) matchByNumber[num] = m
+    const key = getKnockoutMatchKey(m)
+    if (key) matchByNumber[key] = m
   })
 
   const matchesByRound = {}
