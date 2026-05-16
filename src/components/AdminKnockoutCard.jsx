@@ -19,17 +19,22 @@ function formatMatchDate(iso) {
 }
 
 /* ═══════════════════════════════════════════════════
-   AdminKnockoutCard — define/edita os times de um match
+   AdminKnockoutCard — define/edita/reseta os times de um match
    de mata-mata.
-   - Se o match ainda está com placeholder → "definir" (salva direto)
-   - Se já tinha times mas sem palpites → "atualizar" (salva direto)
-   - Se já tinha times e tem palpites → "alterar" (pede confirmação)
+
+   Ações disponíveis:
+   - "Salvar confronto" — placeholders → times definidos
+   - "Atualizar confronto" — times definidos, sem palpites ainda → trocar
+   - "Alterar confronto" — times definidos, COM palpites → trocar (com confirmação)
+   - "Resetar pra placeholders" — times definidos → volta pros placeholders
+       (com confirmação se houver palpites). Botão separado, layout discreto.
    ═══════════════════════════════════════════════════ */
 
-export default function AdminKnockoutCard({ match, teams, now, predictionsCount, onSave }) {
+export default function AdminKnockoutCard({ match, teams, now, predictionsCount, onSave, onReset }) {
   const [homeId, setHomeId] = useState(match.home_team_id ?? '')
   const [awayId, setAwayId] = useState(match.away_team_id ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [confirmingReset, setConfirmingReset] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
@@ -49,7 +54,7 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
   const differentTeams = homeId !== awayId
   const canSave = canEdit && bothFilled && differentTeams && hasChanged
 
-  // Decide se precisa passar pela tela de confirmação antes de salvar
+  // Decide se a alteração precisa passar pela tela de confirmação
   const needsConfirmation = hasExistingTeams && count > 0
 
   const handleSubmit = () => {
@@ -85,7 +90,6 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
     setSaving(false)
     setConfirming(false)
 
-    // Se deletou palpites, mostra aviso persistente pro admin notificar
     if (deletedCount > 0) {
       setSuccessMsg(`${deletedCount} palpite${deletedCount > 1 ? 's' : ''} deletado${deletedCount > 1 ? 's' : ''} — avise no grupo!`)
       setTimeout(() => setSuccessMsg(null), 10000)
@@ -94,8 +98,52 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
     onSave(match.id, parseInt(homeId), parseInt(awayId), deletedCount)
   }
 
+  const handleResetClick = () => {
+    setError(null)
+    setConfirmingReset(true)
+  }
+
+  const doReset = async () => {
+    setSaving(true)
+    setError(null)
+
+    const { data, error: rpcError } = await supabase.rpc('reset_knockout_match', {
+      p_match_id: match.id,
+    })
+
+    if (rpcError) {
+      console.error('Erro ao resetar confronto:', rpcError)
+      setError(rpcError.message || 'Erro ao resetar')
+      setSaving(false)
+      setConfirmingReset(false)
+      return
+    }
+
+    const deletedCount = data?.deleted_predictions ?? 0
+
+    setSaving(false)
+    setConfirmingReset(false)
+
+    // Limpa selects locais pra voltar ao estado de placeholder
+    setHomeId('')
+    setAwayId('')
+
+    if (deletedCount > 0) {
+      setSuccessMsg(`Confronto resetado — ${deletedCount} palpite${deletedCount > 1 ? 's' : ''} deletado${deletedCount > 1 ? 's' : ''}. Avise no grupo!`)
+      setTimeout(() => setSuccessMsg(null), 10000)
+    } else {
+      setSuccessMsg('Confronto resetado pra placeholders.')
+      setTimeout(() => setSuccessMsg(null), 6000)
+    }
+
+    if (onReset) {
+      onReset(match.id, deletedCount)
+    }
+  }
+
   const handleCancel = () => {
     setConfirming(false)
+    setConfirmingReset(false)
     setError(null)
   }
 
@@ -112,6 +160,9 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
   if (hasExistingTeams) {
     primaryButtonLabel = count > 0 ? 'Alterar confronto' : 'Atualizar confronto'
   }
+
+  // Estado: alguma confirmação aberta? Esconde os dropdowns nesse caso.
+  const isConfirming = confirming || confirmingReset
 
   return (
     <div className="bg-gray-800/80 rounded-xl border border-gray-700/40 overflow-hidden">
@@ -149,8 +200,8 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
           </p>
         )}
 
-        {/* Dropdowns (escondidos durante confirmação) */}
-        {!confirming && (
+        {/* Dropdowns (escondidos durante qualquer confirmação) */}
+        {!isConfirming && (
           <div className="space-y-2">
             {/* Casa */}
             <div className="flex items-center gap-2">
@@ -193,15 +244,15 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
         )}
 
         {/* Área de feedback + ação */}
-        <div className="pt-1">
-          {/* Sucesso persistente (10s) */}
+        <div className="pt-1 space-y-2">
+          {/* Sucesso persistente */}
           {successMsg && (
-            <p className="text-center text-xs text-green-400 mb-2">
+            <p className="text-center text-xs text-green-400">
               ✓ {successMsg}
             </p>
           )}
 
-          {/* Confirmação de alteração destrutiva */}
+          {/* Confirmação de ALTERAÇÃO destrutiva */}
           {confirming && (
             <div className="space-y-2">
               <p className="text-center text-yellow-400 text-xs font-medium">
@@ -235,10 +286,47 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
             </div>
           )}
 
-          {/* Botão normal (quando não está confirmando) */}
-          {!confirming && (
-            <div className="flex items-center justify-between gap-2 min-h-[28px]">
-              <div className="text-[11px] flex-1">
+          {/* Confirmação de RESET */}
+          {confirmingReset && (
+            <div className="space-y-2">
+              <p className="text-center text-red-400 text-xs font-medium">
+                Resetar este confronto pra placeholders?
+              </p>
+              <p className="text-center text-gray-500 text-[10px]">
+                Os times definidos serão removidos e o confronto voltará pros placeholders ({match.home_placeholder} × {match.away_placeholder}).
+                {count > 0 && (
+                  <> {count} palpite{count > 1 ? 's' : ''} {count > 1 ? 'serão deletados' : 'será deletado'}. Avise no grupo.</>
+                )}
+              </p>
+              {error && (
+                <p className="text-center text-red-400 text-xs">{error}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancel}
+                  disabled={saving}
+                  className="flex-1 py-2 text-xs font-semibold rounded-lg transition-colors
+                    bg-gray-700 hover:bg-gray-600 text-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={doReset}
+                  disabled={saving}
+                  className="flex-1 py-2 text-xs font-semibold rounded-lg transition-colors
+                    bg-red-600 hover:bg-red-700 text-white
+                    disabled:opacity-50"
+                >
+                  {saving ? 'Resetando...' : 'Confirmar reset'}
+                </button>
+              </div>
+            </div>
+          )}
+
+                 {/* Botões normais (quando não está confirmando nada) */}
+          {!isConfirming && (
+            <div className="flex items-center justify-between gap-2 min-h-[32px]">
+              <div className="text-[11px] flex-1 min-w-0">
                 {error && <span className="text-red-400">{error}</span>}
                 {!error && bothFilled && !differentTeams && (
                   <span className="text-red-400">⚠ Times devem ser diferentes</span>
@@ -247,18 +335,36 @@ export default function AdminKnockoutCard({ match, teams, now, predictionsCount,
                   <span className="text-gray-500 italic">🔒 Jogo já começou</span>
                 )}
               </div>
-              <button
-                onClick={handleSubmit}
-                disabled={!canSave || saving}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0
-                  ${canSave && !saving
-                    ? (needsConfirmation
-                        ? 'bg-red-600 text-white hover:bg-red-500'
-                        : 'bg-yellow-600 text-white hover:bg-yellow-500')
-                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
-              >
-                {saving ? 'Salvando...' : primaryButtonLabel}
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleSubmit}
+                  disabled={!canSave || saving}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0
+                    ${canSave && !saving
+                      ? (needsConfirmation
+                          ? 'bg-red-600 text-white hover:bg-red-500'
+                          : 'bg-yellow-600 text-white hover:bg-yellow-500')
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
+                >
+                  {saving ? 'Salvando...' : primaryButtonLabel}
+                </button>
+
+                {hasExistingTeams && canEdit && (
+                  <button
+                    onClick={handleResetClick}
+                    disabled={saving}
+                    title="Resetar confronto para os placeholders originais"
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors shrink-0
+                      bg-red-500/10 hover:bg-red-500/20
+                      text-red-300 hover:text-red-200
+                      border border-red-500/30 hover:border-red-400/50
+                      disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Resetar
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

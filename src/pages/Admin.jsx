@@ -298,7 +298,7 @@ function AdminMatchCard({ match, onResult, onReset }) {
      - Botão pra definir/limpar a resposta correta
      - Contagem de participação (X/Y responderam) + lista de faltantes
 
-   Pra ver respostas individuais antes do prazo (debug/auditoria),
+   Pra ver respostas individuais antes do prazo (debug/auditoria), 
    usar SQL Editor com receitas em supabase/scripts/.
    ═══════════════════════════════════════════════════ */
 
@@ -682,6 +682,24 @@ export default function Admin() {
     }
   }
 
+  const handleKnockoutReset = (matchId) => {
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.id === matchId
+          ? {
+              ...m,
+              home_team_id: null,
+              away_team_id: null,
+              home_team: null,
+              away_team: null,
+            }
+          : m
+      )
+    )
+
+    setPredictionsCount((prev) => ({ ...prev, [matchId]: 0 }))
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -815,6 +833,7 @@ export default function Admin() {
                       now={now}
                       predictionsCount={predictionsCount[m.id] ?? 0}
                       onSave={handleKnockoutSave}
+                      onReset={handleKnockoutReset}
                     />
                   ))}
                 </div>
