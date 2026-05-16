@@ -6,7 +6,10 @@ import { supabase } from '../lib/supabase'
  *
  * Encapsula:
  *   - Fetch inicial de matches (com join de home_team e away_team) e predictions
- *   - Polling a cada 30s pra detectar mudanças de status (admin finalizou jogo)
+ *   - Polling a cada 30s pra detectar mudanças de status (admin finalizou jogo).
+ *     O polling só refaz predictions se DETECTAR mudança em algum match
+ *     (status, placar ou times definidos). Isso evita refetch desnecessário
+ *     de centenas de linhas em cada ciclo de polling.
  *   - Callback handlePredictionSaved pra atualizar state local quando
  *     o MatchCard salva um palpite
  *
@@ -80,8 +83,10 @@ export function useMatchesAndPredictions(userId, rounds = ['group']) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, roundsKey])
 
-  // Polling a cada 30s pra detectar mudanças de status (admin finalizou jogo)
-  // Também refaz predictions pra pegar pontos recalculados
+  // Polling a cada 30s pra detectar mudanças de status (admin finalizou
+  // jogo) ou definiu times de um confronto de mata-mata. Otimização:
+  // só refaz predictions se algum match mudou — evita carregar todas
+  // as 100+ linhas de predictions a cada 30s sem motivo.
   useEffect(() => {
     const refreshStatuses = async () => {
       const { data } = await supabase
@@ -94,26 +99,32 @@ export function useMatchesAndPredictions(userId, rounds = ['group']) {
       const statusMap = {}
       data.forEach((m) => { statusMap[m.id] = m })
 
+      let anyMatchChanged = false
+
       setMatches((prev) =>
         prev.map((m) => {
           const fresh = statusMap[m.id]
           if (fresh && (fresh.status !== m.status || fresh.home_score !== m.home_score)) {
+            anyMatchChanged = true
             return { ...m, status: fresh.status, home_score: fresh.home_score, away_score: fresh.away_score }
           }
           return m
         })
       )
 
-      // Refetch predictions pra pegar pontos atualizados
-      const { data: predsData } = await supabase
-        .from('predictions')
-        .select('*')
-        .eq('user_id', userId)
+      // Só refaz predictions se algum match mudou de fato.
+      // Evita carregar todas as linhas de predictions a cada 30s sem motivo.
+      if (anyMatchChanged) {
+        const { data: predsData } = await supabase
+          .from('predictions')
+          .select('*')
+          .eq('user_id', userId)
 
-      if (predsData) {
-        const predsMap = {}
-        predsData.forEach((p) => { predsMap[p.match_id] = p })
-        setPredictions(predsMap)
+        if (predsData) {
+          const predsMap = {}
+          predsData.forEach((p) => { predsMap[p.match_id] = p })
+          setPredictions(predsMap)
+        }
       }
     }
 

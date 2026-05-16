@@ -225,7 +225,21 @@ export default function UserPredictionsModal({ userId, currentUserId, allTeams, 
     const mult = MULTIPLIERS[p.round] ?? 1
     return p.status === 'finished' && p.points === 15 * mult
   }).length
-  const acertosVisiveis = matchPredictions.filter((p) => p.status === 'finished' && (p.points ?? 0) > 0).length
+
+  // Acertos = palpites com pontos > 0, EXCLUINDO palpites estimulados
+  // (que valem 2 * multiplier). Replica a lógica da view `ranking`
+  // no banco — palpite estimulado não conta como acerto.
+  const acertosVisiveis = matchPredictions.filter((p) => {
+    if (p.status !== 'finished') return false
+    if ((p.points ?? 0) <= 0) return false
+    const mult = MULTIPLIERS[p.round] ?? 1
+    return p.points !== 2 * mult
+  }).length
+
+  // Nome a exibir: usa display_name do perfil quando existe; caso
+  // contrário mostra mensagem clara em vez de "—" mudo. Evita situação
+  // confusa em que o usuário clica em alguém e vê só um traço.
+  const displayName = profile?.display_name?.split('@')[0] || 'Usuário não encontrado'
 
   return (
     <div
@@ -244,7 +258,7 @@ export default function UserPredictionsModal({ userId, currentUserId, allTeams, 
                 Histórico de palpites
               </p>
               <h3 className="text-xl font-bold text-white truncate">
-                {profile?.display_name?.split('@')[0] || '—'}
+                {displayName}
               </h3>
             </div>
             <button
