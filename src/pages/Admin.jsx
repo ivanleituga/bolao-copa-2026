@@ -151,20 +151,26 @@ function AdminMatchCard({ match, onResult, onReset }) {
           <div className="flex items-center gap-2 px-2">
             <input
               type="number"
+              inputMode="numeric"
+              enterKeyHint="done"
               min="0"
               max="99"
               value={home}
               onChange={(e) => setHome(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
               className={inputClasses}
               placeholder="-"
             />
             <span className="text-gray-500 text-lg font-bold">×</span>
             <input
               type="number"
+              inputMode="numeric"
+              enterKeyHint="done"
               min="0"
               max="99"
               value={away}
               onChange={(e) => setAway(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
               className={inputClasses}
               placeholder="-"
             />
@@ -288,17 +294,12 @@ function AdminMatchCard({ match, onResult, onReset }) {
    SpecialQuestionAdmin — gerenciamento das perguntas especiais
 
    Princípio de privacidade: o admin não vê respostas individuais
-   dos participantes através da interface, independente de prazo ou
-   correct_answer estar definida. A interface mostra apenas:
+   dos participantes através da interface. A interface mostra apenas:
      - Botão pra definir/limpar a resposta correta
      - Contagem de participação (X/Y responderam) + lista de faltantes
 
    Pra ver respostas individuais antes do prazo (debug/auditoria),
    usar SQL Editor com receitas em supabase/scripts/.
-
-   Após o prazo ou após definir correct_answer, a RLS libera o
-   conteúdo pra todos — então admin vê pelo modal de perfil
-   (clicando no usuário no Ranking), igual qualquer participante.
    ═══════════════════════════════════════════════════ */
 
 function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
@@ -412,7 +413,7 @@ function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
             {isMulti ? 'Respostas corretas' : 'Resposta correta'}
           </label>
 
-          {/* MODO TEAM: dropdown único */}
+          {/* MODO TEAM: dropdown único — [select | Salvar | Limpar] */}
           {!isMulti && (
             <div className="flex gap-2">
               <select
@@ -450,7 +451,7 @@ function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
             </div>
           )}
 
-          {/* MODO PLAYER: multi-select com chips */}
+          {/* MODO PLAYER: multi-select numa linha — [select | +Adicionar | Salvar | Limpar] */}
           {isMulti && (
             <div className="space-y-2">
               <div className="flex gap-2">
@@ -478,8 +479,29 @@ function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
                 >
                   + Adicionar
                 </button>
+                <button
+                  onClick={handleSaveCorrectAnswer}
+                  disabled={savingCorrect || !canSave}
+                  className="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                    bg-yellow-600 hover:bg-yellow-700 text-white
+                    disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  {savingCorrect ? '...' : 'Salvar'}
+                </button>
+                {question.correct_answer && (
+                  <button
+                    onClick={handleClearCorrectAnswer}
+                    disabled={savingCorrect}
+                    className="px-3 py-2 text-sm rounded-lg transition-colors
+                      bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
+                      border border-red-500/20 hover:border-red-500/40"
+                  >
+                    Limpar
+                  </button>
+                )}
               </div>
 
+              {/* Chips dos selecionados (linha de baixo) */}
               {correctAnswer.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {correctAnswer.map((name) => (
@@ -500,29 +522,6 @@ function SpecialQuestionAdmin({ question, teams, allUsers, onUpdate }) {
                   ))}
                 </div>
               )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSaveCorrectAnswer}
-                  disabled={savingCorrect || !canSave}
-                  className="flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors
-                    bg-yellow-600 hover:bg-yellow-700 text-white
-                    disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {savingCorrect ? 'Salvando...' : `Salvar ${correctAnswer.length > 0 ? `(${correctAnswer.length})` : ''}`}
-                </button>
-                {question.correct_answer && (
-                  <button
-                    onClick={handleClearCorrectAnswer}
-                    disabled={savingCorrect}
-                    className="px-3 py-2 text-sm rounded-lg transition-colors
-                      bg-transparent hover:bg-red-500/10 text-red-400/70 hover:text-red-400
-                      border border-red-500/20 hover:border-red-500/40"
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
             </div>
           )}
 
@@ -571,13 +570,12 @@ export default function Admin() {
 
   // Mapa { match_id → quantidade de palpites }. Só usado na aba
   // "Definir mata-mata" pra avisar admin antes de alterar um confronto
-  // que já tem palpites registrados. Vem da RPC match_predictions_counts
-  // que respeita privacidade (retorna só counts, não os palpites).
+  // que já tem palpites. Vem da RPC match_predictions_counts que
+  // respeita privacidade (retorna só counts, não palpites).
   const [predictionsCount, setPredictionsCount] = useState({})
 
-  // Busca perguntas especiais + profiles pra montar a lista de
-  // participação. NÃO busca special_predictions (privacidade — admin
-  // segue mesmas regras que usuário comum na UI).
+  // Busca perguntas especiais + profiles. NÃO busca special_predictions
+  // (privacidade — admin segue mesmas regras que usuário comum na UI).
   const fetchSpecial = async () => {
     const [questionsRes, profilesRes] = await Promise.all([
       supabase.from('special_questions').select('*').order('id'),
@@ -588,8 +586,8 @@ export default function Admin() {
     setAllUsers(profilesRes.data || [])
   }
 
-  // Conta palpites por match via RPC (que só admin pode chamar e
-  // retorna agregado sem expor palpites).
+  // Conta palpites por match via RPC (só admin pode chamar; retorna
+  // agregado sem expor palpites).
   const fetchPredictionsCount = async () => {
     const { data, error } = await supabase.rpc('match_predictions_counts')
 

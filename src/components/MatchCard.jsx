@@ -145,24 +145,32 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
     border ${inputBorder} focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:outline-none
     disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
-  // Card é clicável quando NÃO é placeholder (placeholder não tem o que mostrar
-  // de palpites de outros porque a RLS bloqueia até o jogo começar e
-  // ninguém deveria ter palpitado mesmo)
+  // Card é clicável quando NÃO é placeholder
   const isClickable = !isPlaceholderMatch
   const cardCursor = isClickable ? 'cursor-pointer' : ''
-  // Hover sutil só pra cards clicáveis
   const cardHover = isClickable ? 'hover:bg-gray-700/10 transition-colors' : ''
 
-  // Handler do clique do card. Abre modal só se for clicável.
-  // Os inputs de placar usam stopPropagation próprio pra não disparar isso.
   const handleCardClick = () => {
     if (!isClickable) return
     setModalOpen(true)
   }
 
-  // Helper pra impedir propagação em elementos interativos internos.
-  // Usado nos inputs de placar — clicar/digitar não deve abrir modal.
+  // Impede que clique/foco/keydown no input dispare o handleCardClick do card pai.
+  // Importante: tem que ser onMouseDown / onTouchStart também porque o
+  // onClick do card pode disparar antes do onClick do input em alguns
+  // navegadores mobile.
   const stop = (e) => e.stopPropagation()
+
+  // Pressionar Enter no input remove o foco (fecha teclado no mobile).
+  // O atributo enterKeyHint="done" já faz o teclado mostrar "Concluído"
+  // em vez de "Próximo", mas Enter ainda dispararia submit em forms.
+  // Como não estamos em form, o blur explícito garante consistência.
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.currentTarget.blur()
+    }
+  }
 
   return (
     <>
@@ -209,11 +217,15 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
+                enterKeyHint="done"
                 maxLength={2}
                 value={home}
                 onChange={(e) => setHome(sanitizeScore(e.target.value))}
                 onClick={stop}
                 onFocus={stop}
+                onMouseDown={stop}
+                onTouchStart={stop}
+                onKeyDown={handleKeyDown}
                 disabled={!isOpen}
                 className={inputClasses}
               />
@@ -222,11 +234,15 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
+                enterKeyHint="done"
                 maxLength={2}
                 value={away}
                 onChange={(e) => setAway(sanitizeScore(e.target.value))}
                 onClick={stop}
                 onFocus={stop}
+                onMouseDown={stop}
+                onTouchStart={stop}
+                onKeyDown={handleKeyDown}
                 disabled={!isOpen}
                 className={inputClasses}
               />
@@ -315,9 +331,7 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
         </div>
       </div>
 
-      {/* Modal de palpites — renderizado fora do card pra não herdar
-          estilos de container. Só monta quando aberto pra não fazer
-          fetch desnecessário. */}
+      {/* Modal de palpites */}
       {modalOpen && (
         <MatchPredictionsModal
           match={match}
