@@ -328,7 +328,7 @@ export default function Groups({ userId }) {
         </h2>
         <div className="h-px flex-1 bg-gray-700/50" />
       </div>
-      <KnockoutBracket />
+      <KnockoutBracket userId={userId} now={now} />
     </div>
   )
 }
