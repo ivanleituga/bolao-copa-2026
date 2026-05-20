@@ -406,7 +406,10 @@ export default function Standings({ userId }) {
       const sorted = (rankingRes.data || []).sort((a, b) => {
         if (b.total_points !== a.total_points) return b.total_points - a.total_points
         if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas
-        return b.total_acertos - a.total_acertos
+        if (b.total_acertos !== a.total_acertos) return b.total_acertos - a.total_acertos
+        return (a.display_name || '').localeCompare(b.display_name || '', 'pt-BR', {
+          sensitivity: 'base',
+        })
       })
 
       const withElevator = sorted.map((player, idx) => {
