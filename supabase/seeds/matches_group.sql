@@ -7,6 +7,12 @@
 -- ATENÇÃO: A tabela matches já existe (criada em 001_schema.sql).
 -- Este script usa subquery (SELECT id FROM teams WHERE code = 'XXX')
 -- para referenciar os IDs das seleções.
+-- ------------------------------------------------------------
+-- Correção 07/06/2026: 3 jogos com data/horário errados (fuso/virada
+-- de data). Ver linhas marcadas com "-- corrigido".
+--   AUS x TUR : 13/06 01:00 -> 14/06 01:00
+--   TUR x PAR : 19/06 01:00 -> 20/06 00:00
+--   BRA x HAI : 19/06 22:00 -> 19/06 21:30
 -- ============================================================
 
 -- Limpar jogos anteriores (caso re-execute)
@@ -30,9 +36,9 @@ INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_ti
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
 ('D', 'group', (SELECT id FROM teams WHERE code = 'USA'), (SELECT id FROM teams WHERE code = 'PAR'), '2026-06-12 22:00:00-03', 'SoFi Stadium, Los Angeles');
 
--- GRUPO D (madrugada 13/06)
+-- GRUPO D (madrugada 14/06)
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
-('D', 'group', (SELECT id FROM teams WHERE code = 'AUS'), (SELECT id FROM teams WHERE code = 'TUR'), '2026-06-13 01:00:00-03', 'BC Place, Vancouver');
+('D', 'group', (SELECT id FROM teams WHERE code = 'AUS'), (SELECT id FROM teams WHERE code = 'TUR'), '2026-06-14 01:00:00-03', 'BC Place, Vancouver'); -- corrigido: era 2026-06-13 01:00
 
 -- GRUPO C
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
@@ -104,9 +110,9 @@ INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_ti
 ('B', 'group', (SELECT id FROM teams WHERE code = 'SUI'), (SELECT id FROM teams WHERE code = 'BIH'), '2026-06-18 16:00:00-03', 'SoFi Stadium, Los Angeles'),
 ('B', 'group', (SELECT id FROM teams WHERE code = 'CAN'), (SELECT id FROM teams WHERE code = 'QAT'), '2026-06-18 19:00:00-03', 'BC Place, Vancouver');
 
--- GRUPO D (madrugada 19/06)
+-- GRUPO D (madrugada 20/06)
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
-('D', 'group', (SELECT id FROM teams WHERE code = 'TUR'), (SELECT id FROM teams WHERE code = 'PAR'), '2026-06-19 01:00:00-03', 'Levi''s Stadium, San Francisco');
+('D', 'group', (SELECT id FROM teams WHERE code = 'TUR'), (SELECT id FROM teams WHERE code = 'PAR'), '2026-06-20 00:00:00-03', 'Levi''s Stadium, San Francisco'); -- corrigido: era 2026-06-19 01:00
 
 -- GRUPO D
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
@@ -115,7 +121,7 @@ INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_ti
 -- GRUPO C
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
 ('C', 'group', (SELECT id FROM teams WHERE code = 'SCO'), (SELECT id FROM teams WHERE code = 'MAR'), '2026-06-19 19:00:00-03', 'Gillette Stadium, Boston'),
-('C', 'group', (SELECT id FROM teams WHERE code = 'BRA'), (SELECT id FROM teams WHERE code = 'HAI'), '2026-06-19 22:00:00-03', 'Lincoln Financial Field, Filadélfia');
+('C', 'group', (SELECT id FROM teams WHERE code = 'BRA'), (SELECT id FROM teams WHERE code = 'HAI'), '2026-06-19 21:30:00-03', 'Lincoln Financial Field, Filadélfia'); -- corrigido: era 2026-06-19 22:00
 
 -- GRUPO F
 INSERT INTO matches (group_letter, round, home_team_id, away_team_id, kickoff_time, venue) VALUES
