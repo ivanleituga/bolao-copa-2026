@@ -953,7 +953,16 @@ BEGIN
     SELECT
       r.profile_id,
       ROW_NUMBER() OVER (
-        ORDER BY r.total_points DESC, r.cravadas DESC, r.total_acertos DESC
+        -- Ordenação 100% determinística e idêntica à do frontend
+        -- (Standings.jsx): empates desempatam por nome (collation pt-BR)
+        -- e, em último caso, por profile_id. Sem isso a ordem entre
+        -- empatados é arbitrária e o elevador mostra movimento fantasma.
+        -- (Corrigido na migration 017.)
+        ORDER BY r.total_points DESC,
+                 r.cravadas DESC,
+                 r.total_acertos DESC,
+                 r.display_name COLLATE "pt-BR-x-icu" ASC,
+                 r.profile_id ASC
       )::INTEGER AS baseline_position,
       COALESCE(r.total_points, 0)::INTEGER AS baseline_total_points,
       COALESCE(r.cravadas, 0)::INTEGER AS baseline_cravadas,

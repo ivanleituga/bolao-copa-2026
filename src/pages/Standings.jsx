@@ -407,9 +407,14 @@ export default function Standings({ userId }) {
         if (b.total_points !== a.total_points) return b.total_points - a.total_points
         if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas
         if (b.total_acertos !== a.total_acertos) return b.total_acertos - a.total_acertos
-        return (a.display_name || '').localeCompare(b.display_name || '', 'pt-BR', {
+        // Desempate final 100% determinístico e idêntico ao do baseline
+        // do elevador (migration 017): nome (pt-BR) e, por último,
+        // profile_id. Garante que SQL e frontend ordenem empates igual.
+        const byName = (a.display_name || '').localeCompare(b.display_name || '', 'pt-BR', {
           sensitivity: 'base',
         })
+        if (byName !== 0) return byName
+        return a.profile_id < b.profile_id ? -1 : 1
       })
 
       const withElevator = sorted.map((player, idx) => {
