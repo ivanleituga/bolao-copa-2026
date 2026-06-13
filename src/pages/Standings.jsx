@@ -408,7 +408,7 @@ export default function Standings({ userId }) {
         if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas
         if (b.total_acertos !== a.total_acertos) return b.total_acertos - a.total_acertos
         // Desempate final 100% determinístico e idêntico ao do baseline
-        // do elevador (migration 017): nome (pt-BR) e, por último,
+        // do elevador (migration 016): nome (pt-BR) e, por último,
         // profile_id. Garante que SQL e frontend ordenem empates igual.
         const byName = (a.display_name || '').localeCompare(b.display_name || '', 'pt-BR', {
           sensitivity: 'base',

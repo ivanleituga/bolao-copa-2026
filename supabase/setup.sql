@@ -957,7 +957,7 @@ BEGIN
         -- (Standings.jsx): empates desempatam por nome (collation pt-BR)
         -- e, em último caso, por profile_id. Sem isso a ordem entre
         -- empatados é arbitrária e o elevador mostra movimento fantasma.
-        -- (Corrigido na migration 017.)
+        -- (Corrigido na migration 016.)
         ORDER BY r.total_points DESC,
                  r.cravadas DESC,
                  r.total_acertos DESC,
@@ -1025,9 +1025,12 @@ CREATE TRIGGER prevent_self_admin_escalation_trigger
 -- ============================================================
 -- 14. pg_cron — refresh diário do elevador
 -- ============================================================
--- Roda às 05:00 BRT (08:00 UTC). Horário escolhido pra cobrir jogos
--- nos EUA que terminam de madrugada no Brasil — quando o cron roda,
--- todos os jogos do dia anterior já foram processados pelo admin.
+-- Roda às 12:00 BRT (15:00 UTC). O meio-dia é a "zona morta" do
+-- calendário da Copa no Brasil: o jogo mais cedo é 13:00 BRT (termina
+-- ~14:50), e os de madrugada acabam ~03:00. Assim, o panorama do dia
+-- anterior fica visível a manhã inteira pros participantes, e o admin
+-- tem a manhã de folga pra processar jogos de madrugada antes da foto.
+-- (Era 05:00 BRT; alterado na migration 017.)
 --
 -- A função refresh_ranking_elevator_baseline precisa existir antes
 -- (definida na seção 12).
@@ -1047,7 +1050,7 @@ BEGIN
 
   PERFORM cron.schedule(
     'refresh_elevator_baseline_daily',
-    '0 8 * * *',
+    '0 15 * * *',
     $cron$SELECT refresh_ranking_elevator_baseline();$cron$
   );
 END $$;
@@ -1091,7 +1094,7 @@ END $$;
 --    SELECT jobname, schedule, active
 --    FROM cron.job
 --    WHERE jobname = 'refresh_elevator_baseline_daily';
---    Esperado: schedule = '0 8 * * *', active = true
+--    Esperado: schedule = '0 15 * * *', active = true
 --
 -- 6. Teste da função de pontuação:
 --    SELECT calc_prediction_points(2, 1, 2, 1);  -- 15 (exato)
