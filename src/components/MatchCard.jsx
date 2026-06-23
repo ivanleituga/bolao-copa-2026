@@ -85,6 +85,27 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
   const onSavedRef = useRef(onSaved)
   useEffect(() => { onSavedRef.current = onSaved })
 
+  // ── Proteção contra escrita-fantasma por estado obsoleto ──
+  // hasPendingUserEditRef: só é true quando ESTE componente recebeu uma
+  //   digitação do usuário ainda não persistida. O auto-save só grava se
+  //   ela for true — assim, quando o polling rebaixa um `prediction` novo
+  //   por baixo (re-fetch após admin finalizar jogo) e o input fica
+  //   divergente SEM o usuário ter tocado, o save não dispara.
+  // editVersionRef: incrementa a cada digitação. Um save captura a versão
+  //   no início; ao voltar do await, só aplica efeitos colaterais se a
+  //   versão ainda for a atual — um save antigo não pode limpar a flag,
+  //   apagar status nem chamar onSaved por cima de uma edição mais nova.
+  const hasPendingUserEditRef = useRef(false)
+  const editVersionRef = useRef(0)
+
+  // Espelham o valor ATUAL do input. Um save que perdeu a corrida precisa
+  // comparar "o que acabei de gravar" com "o que o usuário tem agora" pra
+  // decidir se dispara correção — e dentro do closure do save os valores
+  // home/away são os do momento em que ele nasceu, não os atuais.
+  const homeRef = useRef(home)
+  const awayRef = useRef(away)
+  useEffect(() => { homeRef.current = home; awayRef.current = away })
+
   // Detecta placeholder: pelo menos um dos times ainda não foi definido
   const hasHomeTeam = match.home_team != null
   const hasAwayTeam = match.away_team != null
@@ -101,21 +122,68 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
   const matchesPrediction = hasValidInputs && prediction
     && prediction.home_score === h && prediction.away_score === a
 
+  // Valores do banco normalizados pra string (pra comparar com o input,
+  // que é string). Usados pelo efeito de re-sincronização abaixo.
+  const predictionHome = prediction?.home_score != null ? String(prediction.home_score) : ''
+  const predictionAway = prediction?.away_score != null ? String(prediction.away_score) : ''
+
+  // Handlers de digitação: marcam que há edição pendente do usuário e
+  // incrementam a versão da edição, ANTES de atualizar o input.
+  const handleHomeChange = (value) => {
+    hasPendingUserEditRef.current = true
+    editVersionRef.current += 1
+    homeRef.current = value
+    setHome(value)
+  }
+  const handleAwayChange = (value) => {
+    hasPendingUserEditRef.current = true
+    editVersionRef.current += 1
+    awayRef.current = value
+    setAway(value)
+  }
+
+  // Re-sincroniza o input com o banco quando o `prediction` muda por fora
+  // (ex.: polling rebaixou valor novo) E não há edição pendente do usuário.
+  // É isto que faz uma aba obsoleta parar de exibir o placar velho — em vez
+  // de regravá-lo. Se o usuário está editando, não toca no que ele digitou.
+  useEffect(() => {
+    if (hasPendingUserEditRef.current) return
+    homeRef.current = predictionHome
+    awayRef.current = predictionAway
+    setHome((current) => (current === predictionHome ? current : predictionHome))
+    setAway((current) => (current === predictionAway ? current : predictionAway))
+  }, [predictionHome, predictionAway])
+
+  // Quando o input volta a bater com o banco (inclusive no caso "editou e
+  // desfez pro valor original"), não há mais divergência local real, então
+  // limpa a flag — senão ela ficaria presa em true e uma mudança futura do
+  // banco seria tratada como edição pendente.
+  useEffect(() => {
+    if (matchesPrediction) {
+      hasPendingUserEditRef.current = false
+      setSaveStatus(null)
+    }
+  }, [matchesPrediction])
+
   // Auto-save com debounce de 800ms
   useEffect(() => {
     if (!isOpen) return
     if (!hasValidInputs) return
     if (matchesPrediction) return
+    if (!hasPendingUserEditRef.current) return
 
     const timer = setTimeout(async () => {
+      const saveVersion = editVersionRef.current
+      const savedHome = h
+      const savedAway = a
       setSaveStatus('saving')
 
       const { error } = await supabase.from('predictions').upsert(
         {
           user_id: userId,
           match_id: match.id,
-          home_score: h,
-          away_score: a,
+          home_score: savedHome,
+          away_score: savedAway,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,match_id' }
@@ -123,15 +191,53 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
 
       if (error) {
         console.error('Erro ao salvar palpite:', error)
-        if (error.code === '42501' || error.message?.includes('row-level security')) {
-          setSaveStatus('blocked')
+        // Erro: o banco NÃO mudou. Só mostramos o erro se este ainda é o
+        // save vigente; se já há edição/save mais novo, ele cuida do status
+        // (limpamos pra não exibir erro de um save obsoleto).
+        if (editVersionRef.current === saveVersion) {
+          if (error.code === '42501' || error.message?.includes('row-level security')) {
+            setSaveStatus('blocked')
+          } else {
+            setSaveStatus('error')
+          }
+          setTimeout(() => {
+            if (editVersionRef.current === saveVersion) {
+              setSaveStatus(null)
+            }
+          }, 4000)
         } else {
-          setSaveStatus('error')
+          setSaveStatus(null)
         }
-        setTimeout(() => setSaveStatus(null), 4000)
+        return
+      }
+
+      // SUCESSO: o banco agora contém (savedHome, savedAway) — tenha este
+      // save perdido a corrida na UI ou não, o upsert já gravou. Refletimos
+      // isso na prop (onSaved) pra que `prediction` == banco. Em seguida, se
+      // o input atual divergir do que foi gravado (ex.: o usuário desfez ou
+      // alterou durante o voo), RE-ARMAMOS a edição: o efeito de auto-save
+      // dispara um save corretivo com o valor atual. Sem isto, um upsert
+      // antigo deixaria o banco num valor que o usuário já abandonou — a
+      // própria classe de bug que estamos corrigindo.
+      onSavedRef.current(match.id, savedHome, savedAway)
+
+      const curH = parseInt(homeRef.current)
+      const curA = parseInt(awayRef.current)
+      const currentInputIsValid = !isNaN(curH) && !isNaN(curA)
+      const divergesFromInput = curH !== savedHome || curA !== savedAway
+
+      if (divergesFromInput) {
+        hasPendingUserEditRef.current = true
+        // Se o input atual está incompleto/inválido (ex.: usuário apagou um
+        // campo durante o voo), o save corretivo não roda até ele preencher.
+        // Não deixamos o "Salvando..." preso nesse meio-tempo.
+        if (!currentInputIsValid) {
+          setSaveStatus(null)
+        }
+        // Se válido: mantém 'Salvando...'; o save corretivo assume e limpa.
       } else {
+        hasPendingUserEditRef.current = false
         setSaveStatus(null)
-        onSavedRef.current(match.id, h, a)
       }
     }, 800)
 
@@ -220,7 +326,7 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
                 enterKeyHint="done"
                 maxLength={2}
                 value={home}
-                onChange={(e) => setHome(sanitizeScore(e.target.value))}
+                onChange={(e) => handleHomeChange(sanitizeScore(e.target.value))}
                 onClick={stop}
                 onFocus={stop}
                 onMouseDown={stop}
@@ -237,7 +343,7 @@ export default function MatchCard({ match, prediction, now, userId, onSaved }) {
                 enterKeyHint="done"
                 maxLength={2}
                 value={away}
-                onChange={(e) => setAway(sanitizeScore(e.target.value))}
+                onChange={(e) => handleAwayChange(sanitizeScore(e.target.value))}
                 onClick={stop}
                 onFocus={stop}
                 onMouseDown={stop}

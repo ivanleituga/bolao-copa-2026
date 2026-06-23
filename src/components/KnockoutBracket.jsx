@@ -205,6 +205,20 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
   const onSavedRef = useRef(onSaved)
   useEffect(() => { onSavedRef.current = onSaved })
 
+  // ── Proteção contra escrita-fantasma por estado obsoleto ──
+  // Mesmo mecanismo do MatchCard: hasPendingUserEditRef só é true após
+  // digitação não persistida (o auto-save só grava se ela for true), e
+  // editVersionRef garante que um save antigo que perdeu a corrida não
+  // limpe a flag, status nem chame onSaved por cima de uma edição mais nova.
+  const hasPendingUserEditRef = useRef(false)
+  const editVersionRef = useRef(0)
+
+  // Espelham o valor atual do input (ver MatchCard) — usados pra decidir,
+  // num save que perdeu a corrida, se um save corretivo é necessário.
+  const homeRef = useRef(home)
+  const awayRef = useRef(away)
+  useEffect(() => { homeRef.current = home; awayRef.current = away })
+
   const hasMatch = match != null
   const hasHomeTeam = match?.home_team != null
   const hasAwayTeam = match?.away_team != null
@@ -224,22 +238,70 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
   const matchesPrediction = hasValidInputs && prediction
     && prediction.home_score === h && prediction.away_score === a
 
+  // Valores do banco normalizados pra string (ver MatchCard).
+  const predictionHome = prediction?.home_score != null ? String(prediction.home_score) : ''
+  const predictionAway = prediction?.away_score != null ? String(prediction.away_score) : ''
+
+  // Handlers de digitação: marcam edição pendente + versão antes do setState.
+  const handleHomeChange = (value) => {
+    hasPendingUserEditRef.current = true
+    editVersionRef.current += 1
+    homeRef.current = value
+    setHome(value)
+  }
+  const handleAwayChange = (value) => {
+    hasPendingUserEditRef.current = true
+    editVersionRef.current += 1
+    awayRef.current = value
+    setAway(value)
+  }
+
+  // Re-sincroniza o input com o banco quando o `prediction` muda por fora e
+  // não há edição pendente. Faz a aba obsoleta exibir o valor novo em vez
+  // de regravar o velho. Não atropela o que o usuário está digitando.
+  //
+  // setState nestes dois effects é intencional (sincroniza estado local
+  // controlado com dado externo — cerne da correção). Regra suprimida só
+  // aqui, não globalmente.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (hasPendingUserEditRef.current) return
+    homeRef.current = predictionHome
+    awayRef.current = predictionAway
+    setHome((current) => (current === predictionHome ? current : predictionHome))
+    setAway((current) => (current === predictionAway ? current : predictionAway))
+  }, [predictionHome, predictionAway])
+
+  // Limpa a flag quando o input volta a bater com o banco (cobre "editou e
+  // desfez pro valor original").
+  useEffect(() => {
+    if (matchesPrediction) {
+      hasPendingUserEditRef.current = false
+      setSaveStatus(null)
+    }
+  }, [matchesPrediction])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   useEffect(() => {
     if (!hasMatch) return
     if (!isOpen) return
     if (!hasValidInputs) return
     if (matchesPrediction) return
     if (!userId) return
+    if (!hasPendingUserEditRef.current) return
 
     const timer = setTimeout(async () => {
+      const saveVersion = editVersionRef.current
+      const savedHome = h
+      const savedAway = a
       setSaveStatus('saving')
 
       const { error } = await supabase.from('predictions').upsert(
         {
           user_id: userId,
           match_id: match.id,
-          home_score: h,
-          away_score: a,
+          home_score: savedHome,
+          away_score: savedAway,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,match_id' }
@@ -247,17 +309,47 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
 
       if (error) {
         console.error('Erro ao salvar palpite mata-mata:', error)
-        if (error.code === '42501' || error.message?.includes('row-level security')) {
-          setSaveStatus('blocked')
+        // Erro: o banco NÃO mudou. Só exibe se ainda é o save vigente.
+        if (editVersionRef.current === saveVersion) {
+          if (error.code === '42501' || error.message?.includes('row-level security')) {
+            setSaveStatus('blocked')
+          } else {
+            setSaveStatus('error')
+          }
+          setTimeout(() => {
+            if (editVersionRef.current === saveVersion) {
+              setSaveStatus(null)
+            }
+          }, 4000)
         } else {
-          setSaveStatus('error')
+          setSaveStatus(null)
         }
-        setTimeout(() => setSaveStatus(null), 4000)
+        return
+      }
+
+      // SUCESSO: o banco agora contém (savedHome, savedAway). Reflete na prop
+      // e, se o input atual divergir do gravado, re-arma pra um save
+      // corretivo (mesma lógica do MatchCard — evita lost-update por um
+      // upsert antigo que venceu a corrida no banco).
+      if (onSavedRef.current) {
+        onSavedRef.current(match.id, savedHome, savedAway)
+      }
+
+      const curH = parseInt(homeRef.current)
+      const curA = parseInt(awayRef.current)
+      const currentInputIsValid = !isNaN(curH) && !isNaN(curA)
+      const divergesFromInput = curH !== savedHome || curA !== savedAway
+
+      if (divergesFromInput) {
+        hasPendingUserEditRef.current = true
+        // Input incompleto/inválido durante o voo: não deixa 'Salvando...'
+        // preso (o corretivo só roda quando voltar a ser válido).
+        if (!currentInputIsValid) {
+          setSaveStatus(null)
+        }
       } else {
+        hasPendingUserEditRef.current = false
         setSaveStatus(null)
-        if (onSavedRef.current) {
-          onSavedRef.current(match.id, h, a)
-        }
       }
     }, 800)
 
@@ -338,7 +430,7 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
               isWinner={homeWon}
               compact={compact}
               predictionValue={showInputs ? home : null}
-              onPredictionChange={showInputs ? setHome : null}
+              onPredictionChange={showInputs ? handleHomeChange : null}
               inputDisabled={!isOpen}
               inputBorder={inputBorder}
               stop={stop}
@@ -351,7 +443,7 @@ function KnockoutCard({ match, prediction, now, userId, onSaved, compact = false
               isWinner={awayWon}
               compact={compact}
               predictionValue={showInputs ? away : null}
-              onPredictionChange={showInputs ? setAway : null}
+              onPredictionChange={showInputs ? handleAwayChange : null}
               inputDisabled={!isOpen}
               inputBorder={inputBorder}
               stop={stop}

@@ -104,7 +104,7 @@ export function useMatchesAndPredictions(userId, rounds = ['group']) {
       setMatches((prev) =>
         prev.map((m) => {
           const fresh = statusMap[m.id]
-          if (fresh && (fresh.status !== m.status || fresh.home_score !== m.home_score)) {
+          if (fresh && (fresh.status !== m.status || fresh.home_score !== m.home_score || fresh.away_score !== m.away_score)) {
             anyMatchChanged = true
             return { ...m, status: fresh.status, home_score: fresh.home_score, away_score: fresh.away_score }
           }
