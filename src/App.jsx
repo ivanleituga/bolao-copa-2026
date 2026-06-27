@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Groups from './pages/Groups'
 import Schedule from './pages/Schedule'
 import Standings from './pages/Standings'
+import Specials from './pages/Specials'
 import Rules from './pages/Rules'
 import Admin from './pages/Admin'
 
@@ -102,6 +103,7 @@ export default function App() {
     { id: 'schedule', label: 'Palpites' },
     { id: 'groups', label: 'Tabela' },
     { id: 'standings', label: 'Ranking' },
+    { id: 'specials', label: 'Especiais' },
     { id: 'rules', label: 'Regulamento' },
     ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
   ]
@@ -127,6 +129,7 @@ export default function App() {
       {activeTab === 'schedule' && <Schedule userId={session.user.id} />}
       {activeTab === 'groups' && <Groups userId={session.user.id} />}
       {activeTab === 'standings' && <Standings userId={session.user.id} />}
+      {activeTab === 'specials' && <Specials userId={session.user.id} />}
       {activeTab === 'rules' && <Rules />}
       {activeTab === 'admin' && isAdmin && <Admin />}
     </Layout>
